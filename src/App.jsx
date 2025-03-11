@@ -7,6 +7,9 @@ import Signup from "./pages/Signup";
 import Dashboard from "./pages/dashboard/Dashboard";
 import ResetPassword from "./pages/ResetPassword";
 import GoogleAuthCallback from "./pages/GoogleAuthCallback";
+import EventsPage from "./pages/events/EventsPage";
+import EventDetailPage from "./pages/events/EventDetailPage";
+import CreateEventPage from "./pages/events/CreateEventPage";
 import "./App.css";
 
 function App() {
@@ -32,6 +35,17 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Event Routes */}
+              <Route path="/events" element={<EventsPage />} />
+              <Route path="/events/:id" element={<EventDetailPage />} />
+              <Route
+                path="/events/create"
+                element={
+                  <ProtectedRoute>
+                    <CreateEventPage />
                   </ProtectedRoute>
                 }
               />
