@@ -3,9 +3,6 @@ import axios from 'axios';
 // Use just the base URL without /api since we'll include it in the routes
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
-console.log('API URL Configuration:', API_URL);
-console.log('Make sure your VITE_API_URL env var is set correctly');
-
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true, // Important for cookies
