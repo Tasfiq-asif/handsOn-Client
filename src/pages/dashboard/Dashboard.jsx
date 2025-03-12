@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import ProfileForm from "./ProfileForm";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EventCard from "../../components/events/EventCard";
@@ -9,6 +9,7 @@ import EventFilter from "../../components/events/EventFilter";
 import eventService from "../../lib/eventService";
 
 const Dashboard = () => {
+  const location = useLocation();
   const [profile, setProfile] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
@@ -31,12 +32,30 @@ const Dashboard = () => {
   const [allEventsLoading, setAllEventsLoading] = useState(false);
   const [allEventsError, setAllEventsError] = useState(null);
   const { user } = useAuth();
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [eventDetailLoading, setEventDetailLoading] = useState(false);
+  const [eventDetail, setEventDetail] = useState(null);
+  const [eventDetailError, setEventDetailError] = useState(null);
 
   useEffect(() => {
     if (user) {
       loadDashboardData();
     }
   }, [user]);
+
+  // Check for tab query parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get("tab");
+    if (
+      tabParam &&
+      ["overview", "profile", "events", "explore", "impact", "teams"].includes(
+        tabParam
+      )
+    ) {
+      setActiveTab(tabParam);
+    }
+  }, [location]);
 
   useEffect(() => {
     if (activeTab === "explore") {
@@ -209,6 +228,54 @@ const Dashboard = () => {
     }
   };
 
+  const fetchEventDetails = async (eventId) => {
+    try {
+      setEventDetailLoading(true);
+      const { event: eventData } = await eventService.getEvent(eventId);
+
+      if (!eventData) {
+        throw new Error("Event not found");
+      }
+
+      setEventDetail(eventData);
+      setEventDetailError(null);
+    } catch (error) {
+      console.error("Error fetching event details:", error);
+      setEventDetailError(error.message || "Failed to load event details");
+    } finally {
+      setEventDetailLoading(false);
+    }
+  };
+
+  const handleEventSelect = (eventId) => {
+    setSelectedEventId(eventId);
+    fetchEventDetails(eventId);
+    // No need to change the active tab, as we'll show event details in the current tab
+  };
+
+  const handleBackToEvents = () => {
+    setSelectedEventId(null);
+    setEventDetail(null);
+  };
+
+  const handleEventDetailRegistrationChange = async (eventId, isRegistered) => {
+    try {
+      if (isRegistered) {
+        await eventService.registerForEvent(eventId);
+      } else {
+        await eventService.cancelRegistration(eventId);
+      }
+
+      // Refresh event details
+      fetchEventDetails(eventId);
+
+      // Also update the events lists
+      handleRegistrationChange(eventId, isRegistered);
+    } catch (error) {
+      console.error("Registration change error:", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 pt-20 flex items-center justify-center">
@@ -252,12 +319,15 @@ const Dashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium text-gray-900">Upcoming Events</h3>
-          <Link
-            to="/events"
+          <button
+            onClick={() => {
+              setActiveTab("explore");
+              setSelectedEventId(null);
+            }}
             className="text-sm text-green-600 hover:text-green-800"
           >
             View All
-          </Link>
+          </button>
         </div>
         {upcomingEvents.length === 0 ? (
           <p className="text-gray-500 text-sm">No upcoming events</p>
@@ -265,15 +335,18 @@ const Dashboard = () => {
           <ul className="space-y-3">
             {upcomingEvents.slice(0, 3).map((event) => (
               <li key={event.id} className="border-b pb-2">
-                <Link
-                  to={`/events/${event.id}`}
-                  className="hover:text-green-600"
+                <button
+                  onClick={() => {
+                    setActiveTab("events");
+                    handleEventSelect(event.id);
+                  }}
+                  className="hover:text-green-600 text-left w-full"
                 >
                   <p className="font-medium">{event.title}</p>
                   <p className="text-sm text-gray-500">
                     {formatDate(event.start_date)}
                   </p>
-                </Link>
+                </button>
               </li>
             ))}
           </ul>
@@ -292,12 +365,12 @@ const Dashboard = () => {
           >
             Create Event
           </Link>
-          <Link
-            to="/events"
+          <button
+            onClick={() => setActiveTab("explore")}
             className="block w-full text-center border border-green-600 text-green-600 hover:bg-green-50 font-medium py-2 px-4 rounded"
           >
             Find Volunteer Opportunities
-          </Link>
+          </button>
           {/* Teams feature - to be implemented later */}
           <button
             disabled
@@ -316,144 +389,463 @@ const Dashboard = () => {
     </div>
   );
 
-  const renderEvents = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {/* Filters Sidebar */}
-      <div className="lg:col-span-1">
-        <EventFilter onFilterChange={handleFilterChange} filters={filters} />
-      </div>
+  const renderEvents = () => {
+    if (selectedEventId && eventDetail) {
+      return renderEventDetail();
+    }
 
-      {/* Events Content */}
-      <div className="lg:col-span-3 space-y-6">
-        {/* Upcoming Events */}
-        <div>
-          <h3 className="text-xl font-medium text-gray-900 mb-4">
-            Your Upcoming Events
-          </h3>
-          {upcomingEvents.length === 0 ? (
-            <div className="bg-white p-6 rounded-lg shadow text-center">
-              <p className="text-gray-500 mb-4">You have no upcoming events</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {upcomingEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Past Events */}
-        <div>
-          <h3 className="text-xl font-medium text-gray-900 mb-4">
-            Past Events
-          </h3>
-          {pastEvents.length === 0 ? (
-            <div className="bg-white p-6 rounded-lg shadow text-center">
-              <p className="text-gray-500">No past events found</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pastEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderExploreEvents = () => (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">
-            Volunteer Opportunities
-          </h2>
-          <p className="mt-1 text-gray-600">
-            Find events and community help requests to make a difference
-          </p>
-        </div>
-
-        <Link
-          to="/events/create"
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          <svg
-            className="-ml-1 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fillRule="evenodd"
-              d="M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V4a1 1 0 00-1-1z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Create Opportunity
-        </Link>
-      </div>
-
+    return (
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="col-span-1">
+        {/* Filters Sidebar */}
+        <div className="lg:col-span-1">
           <EventFilter onFilterChange={handleFilterChange} filters={filters} />
         </div>
 
-        <div className="col-span-3">
-          {allEventsLoading ? (
-            <div className="flex justify-center py-12">
-              <LoadingSpinner />
-            </div>
-          ) : allEventsError ? (
-            <div className="bg-red-50 p-4 rounded-md">
-              <p className="text-red-700">{allEventsError}</p>
-              <button
-                onClick={() => fetchAllEvents(filters)}
-                className="mt-2 text-sm text-red-700 underline"
-              >
-                Try again
-              </button>
-            </div>
-          ) : allEvents.length === 0 ? (
-            <div className="bg-white p-8 rounded-lg shadow text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No opportunities found
-              </h3>
-              <p className="text-gray-500">
-                Try adjusting your filters or create a new opportunity.
-              </p>
-              <Link
-                to="/events/create"
-                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-              >
-                Create New Opportunity
-              </Link>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
-              {allEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
-              ))}
-            </div>
-          )}
+        {/* Events Content */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Upcoming Events */}
+          <div>
+            <h3 className="text-xl font-medium text-gray-900 mb-4">
+              Your Upcoming Events
+            </h3>
+            {upcomingEvents.length === 0 ? (
+              <div className="bg-white p-6 rounded-lg shadow text-center">
+                <p className="text-gray-500 mb-4">
+                  You have no upcoming events
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {upcomingEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    onClick={() => handleEventSelect(event.id)}
+                    className="cursor-pointer"
+                  >
+                    <EventCard
+                      event={event}
+                      onRegistrationChange={handleRegistrationChange}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Past Events */}
+          <div>
+            <h3 className="text-xl font-medium text-gray-900 mb-4">
+              Past Events
+            </h3>
+            {pastEvents.length === 0 ? (
+              <div className="bg-white p-6 rounded-lg shadow text-center">
+                <p className="text-gray-500">No past events found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pastEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    onClick={() => handleEventSelect(event.id)}
+                    className="cursor-pointer"
+                  >
+                    <EventCard
+                      event={event}
+                      onRegistrationChange={handleRegistrationChange}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
+
+  const renderEventDetail = () => {
+    if (eventDetailLoading) {
+      return (
+        <div className="flex justify-center items-center min-h-screen">
+          <LoadingSpinner />
+        </div>
+      );
+    }
+
+    if (eventDetailError) {
+      return (
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          <div className="bg-red-50 p-4 rounded-md">
+            <h2 className="text-lg font-medium text-red-800 mb-2">Error</h2>
+            <p className="text-red-700">{eventDetailError}</p>
+            <button
+              onClick={handleBackToEvents}
+              className="mt-4 inline-block text-green-600 hover:underline"
+            >
+              Back to Events
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (!eventDetail) return null;
+
+    // Determine if this is an event or community help post
+    const isHelpPost = eventDetail.is_ongoing;
+    const isRegistered = eventDetail.participants?.some(
+      (p) => p.user_id === user?.id && p.status === "registered"
+    );
+
+    return (
+      <div className="max-w-7xl mx-auto">
+        {/* Back button */}
+        <button
+          onClick={handleBackToEvents}
+          className="mb-4 flex items-center text-green-600 hover:text-green-800"
+        >
+          <svg
+            className="h-5 w-5 mr-1"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path d="M15 19l-7-7 7-7"></path>
+          </svg>
+          Back to Events
+        </button>
+
+        <div className="bg-white shadow-md rounded-lg overflow-hidden">
+          {/* Event header */}
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex justify-between items-start">
+              <div>
+                {/* Event type badge */}
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    isHelpPost
+                      ? "bg-purple-100 text-purple-800"
+                      : "bg-green-100 text-green-800"
+                  }`}
+                >
+                  {isHelpPost ? "Community Help" : "Event"}
+                </span>
+
+                {/* Category badge if available */}
+                {eventDetail.category && (
+                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    {eventDetail.category}
+                  </span>
+                )}
+
+                <h1 className="mt-2 text-3xl font-bold text-gray-900">
+                  {eventDetail.title}
+                </h1>
+
+                {/* Creator info */}
+                <p className="mt-1 text-sm text-gray-500">
+                  Created by{" "}
+                  {eventDetail.creator?.profiles?.full_name || "Anonymous"}
+                </p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex space-x-3">
+                {/* Show edit/delete buttons if user is the creator */}
+                {user && user.id === eventDetail.creator_id && (
+                  <>
+                    <Link
+                      to={`/events/${eventDetail.id}/edit`}
+                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      Edit
+                    </Link>
+                    <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50">
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Event details */}
+          <div className="p-6">
+            <div className="lg:grid lg:grid-cols-3 lg:gap-8">
+              {/* Main content */}
+              <div className="lg:col-span-2">
+                <div className="prose max-w-none">
+                  <h2 className="text-xl font-semibold mb-4">
+                    About this opportunity
+                  </h2>
+                  <p className="whitespace-pre-line">
+                    {eventDetail.description}
+                  </p>
+                </div>
+
+                {/* Participants section */}
+                <div className="mt-8">
+                  <h2 className="text-xl font-semibold mb-4">Participants</h2>
+                  {eventDetail.participants &&
+                  eventDetail.participants.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {eventDetail.participants
+                        .filter((p) => p.status === "registered")
+                        .map((participant) => (
+                          <div
+                            key={participant.id}
+                            className="flex items-center space-x-2"
+                          >
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700">
+                              {participant.users?.profiles?.full_name?.charAt(
+                                0
+                              ) || "?"}
+                            </div>
+                            <span className="text-sm">
+                              {participant.users?.profiles?.full_name ||
+                                "Anonymous"}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500">
+                      No participants yet. Be the first to join!
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Sidebar */}
+              <div className="mt-8 lg:mt-0">
+                <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
+                  {/* Date and time */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                      When
+                    </h3>
+                    <div className="mt-2 flex items-start">
+                      <svg
+                        className="h-5 w-5 text-gray-400 mr-2"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <div>
+                        {isHelpPost ? (
+                          <p className="text-gray-900">Ongoing opportunity</p>
+                        ) : (
+                          <>
+                            <p className="text-gray-900">
+                              {formatDate(eventDetail.start_date)}
+                            </p>
+                            {eventDetail.start_date && (
+                              <p className="text-gray-500">
+                                {formatTime(eventDetail.start_date)}
+                                {eventDetail.end_date &&
+                                  ` - ${formatTime(eventDetail.end_date)}`}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                      Where
+                    </h3>
+                    <div className="mt-2 flex items-start">
+                      <svg
+                        className="h-5 w-5 text-gray-400 mr-2"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <p className="text-gray-900">
+                        {eventDetail.location || "Virtual"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Capacity if available */}
+                  {eventDetail.capacity && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                        Capacity
+                      </h3>
+                      <p className="mt-2 text-gray-900">
+                        {eventDetail.participants?.filter(
+                          (p) => p.status === "registered"
+                        ).length || 0}{" "}
+                        / {eventDetail.capacity} spots filled
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Registration button */}
+                  <div className="mt-8">
+                    {isRegistered ? (
+                      <button
+                        onClick={() =>
+                          handleEventDetailRegistrationChange(
+                            eventDetail.id,
+                            false
+                          )
+                        }
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      >
+                        Cancel Registration
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          handleEventDetailRegistrationChange(
+                            eventDetail.id,
+                            true
+                          )
+                        }
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                      >
+                        Join Now
+                      </button>
+                    )}
+
+                    {!user && (
+                      <p className="mt-2 text-xs text-gray-500 text-center">
+                        You'll need to log in to register for this event.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const formatTime = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const renderExploreEvents = () => {
+    if (selectedEventId && eventDetail) {
+      return renderEventDetail();
+    }
+
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              Volunteer Opportunities
+            </h2>
+            <p className="mt-1 text-gray-600">
+              Find events and community help requests to make a difference
+            </p>
+          </div>
+
+          <Link
+            to="/events/create"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <svg
+              className="-ml-1 mr-2 h-5 w-5"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V4a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Create Opportunity
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="col-span-1">
+            <EventFilter
+              onFilterChange={handleFilterChange}
+              filters={filters}
+            />
+          </div>
+
+          <div className="col-span-3">
+            {allEventsLoading ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner />
+              </div>
+            ) : allEventsError ? (
+              <div className="bg-red-50 p-4 rounded-md">
+                <p className="text-red-700">{allEventsError}</p>
+                <button
+                  onClick={() => fetchAllEvents(filters)}
+                  className="mt-2 text-sm text-red-700 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : allEvents.length === 0 ? (
+              <div className="bg-white p-8 rounded-lg shadow text-center">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No opportunities found
+                </h3>
+                <p className="text-gray-500">
+                  Try adjusting your filters or create a new opportunity.
+                </p>
+                <Link
+                  to="/events/create"
+                  className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
+                >
+                  Create New Opportunity
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
+                {allEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    onClick={() => handleEventSelect(event.id)}
+                    className="cursor-pointer"
+                  >
+                    <EventCard
+                      event={event}
+                      onRegistrationChange={handleRegistrationChange}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderImpact = () => (
     <div className="bg-white p-6 rounded-lg shadow">
@@ -549,6 +941,8 @@ const Dashboard = () => {
         return renderOverview();
     }
   };
+
+  console.log(eventDetail);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">

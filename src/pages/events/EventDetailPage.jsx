@@ -211,7 +211,7 @@ export default function EventDetailPage() {
 
               {/* Creator info */}
               <p className="mt-1 text-sm text-gray-500">
-                Created by {event.creator?.profiles?.full_name || "Anonymous"}
+                Created by {event.creator_name || "Anonymous"}
               </p>
             </div>
 

@@ -125,8 +125,8 @@ export default function CreateEventPage() {
         const response = await eventService.createEvent(eventData);
         console.log("Event created successfully:", response);
 
-        // Navigate to the new event page
-        navigate(`/events/${response.event.id}`);
+        // Navigate to the Dashboard with the explore tab active
+        navigate(`/dashboard?tab=explore`);
       } catch (apiError) {
         console.error("API Error creating event:", apiError);
         const errorMsg =
