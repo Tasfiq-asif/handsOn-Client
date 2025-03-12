@@ -84,10 +84,36 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Refresh session
+  const refreshSession = async () => {
+    try {
+      console.log("Refreshing auth session...");
+      const { data, error } = await supabase.auth.refreshSession();
+
+      if (error) {
+        console.error("Session refresh error:", error);
+        return { error };
+      }
+
+      if (data.session) {
+        console.log("Session refreshed successfully");
+        setUser(data.session.user);
+        return { data, error: null };
+      } else {
+        console.log("No session after refresh");
+        return { data: null, error: "No session" };
+      }
+    } catch (error) {
+      console.error("Session refresh exception:", error);
+      return { error: error.message };
+    }
+  };
+
   const value = {
     signUp,
     signIn,
     signOut,
+    refreshSession,
     user,
     setUser,
   };

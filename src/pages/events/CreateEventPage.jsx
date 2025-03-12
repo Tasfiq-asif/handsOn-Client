@@ -28,7 +28,7 @@ export default function CreateEventPage() {
   const [error, setError] = useState(null);
 
   // Hooks
-  const { user } = useAuth();
+  const { user, refreshSession } = useAuth();
   const navigate = useNavigate();
 
   // Categories for dropdown
@@ -75,6 +75,18 @@ export default function CreateEventPage() {
       setLoading(true);
       setError(null);
 
+      // Refresh the session to ensure we have a valid token
+      const { error: refreshError } = await refreshSession();
+      if (refreshError) {
+        console.error("Session refresh failed:", refreshError);
+        setError("Your session has expired. Please log in again.");
+        navigate("/login?redirect=/events/create");
+        return;
+      }
+
+      // Log the user ID for debugging
+      console.log("Attempting to create event as user:", user.id);
+
       // Prepare event data
       const eventData = {
         title: formData.title,
@@ -106,16 +118,39 @@ export default function CreateEventPage() {
         }
       }
 
-      // Create the event
-      const response = await eventService.createEvent(eventData);
+      console.log("Submitting event data:", eventData);
 
-      // Navigate to the new event page
-      navigate(`/events/${response.event.id}`);
+      // Create the event
+      try {
+        const response = await eventService.createEvent(eventData);
+        console.log("Event created successfully:", response);
+
+        // Navigate to the new event page
+        navigate(`/events/${response.event.id}`);
+      } catch (apiError) {
+        console.error("API Error creating event:", apiError);
+        const errorMsg =
+          apiError.response?.data?.message ||
+          apiError.response?.data?.error ||
+          apiError.message ||
+          "Failed to create event. Please try again.";
+
+        setError(errorMsg);
+
+        if (
+          errorMsg.includes("token") ||
+          errorMsg.includes("authorization") ||
+          errorMsg.includes("auth")
+        ) {
+          // Auth related error - redirect to login
+          alert("Your session has expired. Please log in again.");
+          navigate("/login?redirect=/events/create");
+        }
+      }
     } catch (error) {
       console.error("Error creating event:", error);
       setError(
-        error.response?.data?.message ||
-          "Failed to create event. Please try again."
+        "An unexpected error occurred. Please try again or contact support."
       );
     } finally {
       setLoading(false);
