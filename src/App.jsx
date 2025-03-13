@@ -10,6 +10,7 @@ import GoogleAuthCallback from "./pages/GoogleAuthCallback";
 import EventsPage from "./pages/events/EventsPage";
 import EventDetailPage from "./pages/events/EventDetailPage";
 import CreateEventPage from "./pages/events/CreateEventPage";
+import EditEventPage from "./pages/events/EditEventPage";
 import "./App.css";
 
 function App() {
@@ -46,6 +47,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <CreateEventPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/events/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <EditEventPage />
                   </ProtectedRoute>
                 }
               />

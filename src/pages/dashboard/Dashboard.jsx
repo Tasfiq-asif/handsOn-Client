@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import ProfileForm from "./ProfileForm";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EventCard from "../../components/events/EventCard";
@@ -10,10 +10,12 @@ import eventService from "../../lib/eventService";
 
 const Dashboard = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [pastEvents, setPastEvents] = useState([]);
   const [stats, setStats] = useState({
@@ -36,6 +38,8 @@ const Dashboard = () => {
   const [eventDetailLoading, setEventDetailLoading] = useState(false);
   const [eventDetail, setEventDetail] = useState(null);
   const [eventDetailError, setEventDetailError] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -43,22 +47,61 @@ const Dashboard = () => {
     }
   }, [user]);
 
-  // Check for tab query parameter
+  // Check for tab query parameter and success message
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get("tab");
+    const fromAction = params.get("from");
+
+    console.log("URL parameters:", { tabParam, fromAction });
+    console.log("Current location:", location.search);
+
     if (
       tabParam &&
       ["overview", "profile", "events", "explore", "impact", "teams"].includes(
         tabParam
       )
     ) {
+      console.log("Setting active tab to:", tabParam);
       setActiveTab(tabParam);
+
+      // If coming from event edit/create and tab is explore, clear any selected event
+      if (tabParam === "explore") {
+        console.log("Explore tab active, clearing selected event");
+        setSelectedEventId(null);
+        setEventDetail(null);
+
+        // Refresh events list when coming from edit or create
+        if (fromAction === "edit" || fromAction === "create") {
+          console.log("Refreshing events list after edit/create");
+          fetchAllEvents(filters);
+        }
+
+        // Set success message if coming from create or edit
+        if (fromAction === "create") {
+          console.log("Setting success message for create action");
+          setSuccessMessage(
+            "Event created successfully! It's now visible in the explore tab."
+          );
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else if (fromAction === "edit") {
+          console.log("Setting success message for edit action");
+          setSuccessMessage("Event updated successfully!");
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+        }
+      }
     }
-  }, [location]);
+  }, [location, filters]);
 
   useEffect(() => {
     if (activeTab === "explore") {
+      // Reset event selection when switching to explore tab
+      setSelectedEventId(null);
+      setEventDetail(null);
+
+      // Fetch all events with current filters
       fetchAllEvents(filters);
     }
   }, [activeTab, filters]);
@@ -237,6 +280,12 @@ const Dashboard = () => {
         throw new Error("Event not found");
       }
 
+      console.log("Event detail data:", eventData);
+      // Log the creator_id and user.id for debugging
+      console.log("Event creator_id:", eventData.creator_id);
+      console.log("Current user.id:", user?.id);
+      console.log("Is creator check:", user?.id === eventData.creator_id);
+
       setEventDetail(eventData);
       setEventDetailError(null);
     } catch (error) {
@@ -274,6 +323,43 @@ const Dashboard = () => {
     } catch (error) {
       console.error("Registration change error:", error);
     }
+  };
+
+  // Add handleDeleteEvent function
+  const handleDeleteEvent = async (eventId) => {
+    try {
+      setDeleteLoading(true);
+      await eventService.deleteEvent(eventId);
+
+      // Remove the event from all state variables
+      setAllEvents(allEvents.filter((event) => event.id !== eventId));
+      setUpcomingEvents(upcomingEvents.filter((event) => event.id !== eventId));
+      setPastEvents(pastEvents.filter((event) => event.id !== eventId));
+
+      // Go back to the events list
+      setSelectedEventId(null);
+      setEventDetail(null);
+      setShowDeleteConfirm(false);
+
+      // Show success message
+      setSuccessMessage("Event deleted successfully!");
+      setTimeout(() => setSuccessMessage(null), 5000);
+
+      // Force a refresh of the events list to ensure deleted event doesn't reappear
+      fetchAllEvents(filters);
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      setError("Failed to delete event. Please try again.");
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Update handleEditEvent function to use React Router
+  const handleEditEvent = (eventId) => {
+    // Navigate to the edit page using React Router
+    navigate(`/events/${eventId}/edit`);
   };
 
   if (loading) {
@@ -497,6 +583,11 @@ const Dashboard = () => {
       (p) => p.user_id === user?.id && p.status === "registered"
     );
 
+    // Log creator info for debugging
+    console.log("Event creator ID:", eventDetail.creator_id);
+    console.log("Current user ID:", user?.id);
+    console.log("Is creator:", user?.id === eventDetail.creator_id);
+
     return (
       <div className="max-w-7xl mx-auto">
         {/* Back button */}
@@ -517,6 +608,63 @@ const Dashboard = () => {
           </svg>
           Back to Events
         </button>
+
+        {/* Delete confirmation modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Confirm Delete
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Are you sure you want to delete "{eventDetail.title}"? This
+                action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                  disabled={deleteLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteEvent(eventDetail.id)}
+                  className="px-4 py-2 border border-transparent rounded-md text-white bg-red-600 hover:bg-red-700"
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? (
+                    <span className="flex items-center">
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Deleting...
+                    </span>
+                  ) : (
+                    "Delete Event"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white shadow-md rounded-lg overflow-hidden">
           {/* Event header */}
@@ -548,7 +696,9 @@ const Dashboard = () => {
                 {/* Creator info */}
                 <p className="mt-1 text-sm text-gray-500">
                   Created by{" "}
-                  {eventDetail.creator?.profiles?.full_name || "Anonymous"}
+                  {eventDetail.creator_name ||
+                    eventDetail.creator?.profiles?.full_name ||
+                    "Anonymous"}
                 </p>
               </div>
 
@@ -557,13 +707,16 @@ const Dashboard = () => {
                 {/* Show edit/delete buttons if user is the creator */}
                 {user && user.id === eventDetail.creator_id && (
                   <>
-                    <Link
-                      to={`/events/${eventDetail.id}/edit`}
+                    <button
+                      onClick={() => handleEditEvent(eventDetail.id)}
                       className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50"
                     >
                       Edit
-                    </Link>
-                    <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50">
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50"
+                    >
                       Delete
                     </button>
                   </>
@@ -956,6 +1109,30 @@ const Dashboard = () => {
 
         {error && (
           <div className="mb-6 bg-red-50 p-4 rounded text-red-700">{error}</div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 bg-green-50 p-4 rounded text-green-700 flex justify-between items-center">
+            <span>{successMessage}</span>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-green-500 hover:text-green-700"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         )}
 
         {/* Navigation Tabs */}

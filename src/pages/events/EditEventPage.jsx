@@ -1,14 +1,18 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import eventService from "../../lib/eventService";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 
 /**
- * CreateEventPage Component
+ * EditEventPage Component
  *
- * Allows users to create new volunteer events or community help posts.
+ * Allows users to edit their existing volunteer events or community help posts.
  */
-export default function CreateEventPage() {
+export default function EditEventPage() {
+  // Get the event ID from URL params
+  const { id } = useParams();
+
   // State for form fields
   const [formData, setFormData] = useState({
     title: "",
@@ -23,9 +27,11 @@ export default function CreateEventPage() {
     capacity: "",
   });
 
-  // State for form submission
+  // State for form submission and loading
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   // Hooks
   const { user, refreshSession } = useAuth();
@@ -45,6 +51,75 @@ export default function CreateEventPage() {
     "Arts & Culture",
     "Human Rights",
   ];
+
+  // Load the event data when the component mounts
+  useEffect(() => {
+    const fetchEventData = async () => {
+      try {
+        setInitialLoading(true);
+        const { event } = await eventService.getEvent(id);
+
+        if (!event) {
+          setError("Event not found");
+          return;
+        }
+
+        // Log event and user data for debugging
+        console.log("Event data:", event);
+        console.log("Current user:", user);
+        console.log("Event creator ID:", event.creator_id);
+        console.log("User ID:", user?.id);
+        console.log("Is creator check:", user?.id === event.creator_id);
+
+        // Check if the current user is the creator
+        if (user?.id !== event.creator_id) {
+          setUnauthorized(true);
+          return;
+        }
+
+        // Format dates for the form
+        let startDate = "";
+        let startTime = "";
+        let endDate = "";
+        let endTime = "";
+
+        if (event.start_date) {
+          const startDateTime = new Date(event.start_date);
+          startDate = startDateTime.toISOString().split("T")[0];
+          startTime = startDateTime.toTimeString().slice(0, 5);
+        }
+
+        if (event.end_date) {
+          const endDateTime = new Date(event.end_date);
+          endDate = endDateTime.toISOString().split("T")[0];
+          endTime = endDateTime.toTimeString().slice(0, 5);
+        }
+
+        // Set form data
+        setFormData({
+          title: event.title || "",
+          description: event.description || "",
+          location: event.location || "",
+          category: event.category || "",
+          startDate,
+          startTime,
+          endDate,
+          endTime,
+          isOngoing: event.is_ongoing || false,
+          capacity: event.capacity ? String(event.capacity) : "",
+        });
+      } catch (error) {
+        console.error("Error fetching event:", error);
+        setError("Failed to load event details. Please try again.");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchEventData();
+    }
+  }, [id, user]);
 
   /**
    * Handles form input changes
@@ -67,7 +142,7 @@ export default function CreateEventPage() {
 
     // Check if user is logged in
     if (!user) {
-      navigate("/login?redirect=/events/create");
+      navigate(`/login?redirect=/events/${id}/edit`);
       return;
     }
 
@@ -80,12 +155,9 @@ export default function CreateEventPage() {
       if (refreshError) {
         console.error("Session refresh failed:", refreshError);
         setError("Your session has expired. Please log in again.");
-        navigate("/login?redirect=/events/create");
+        navigate(`/login?redirect=/events/${id}/edit`);
         return;
       }
-
-      // Log the user ID for debugging
-      console.log("Attempting to create event as user:", user.id);
 
       // Prepare event data
       const eventData = {
@@ -118,22 +190,38 @@ export default function CreateEventPage() {
         }
       }
 
-      console.log("Submitting event data:", eventData);
+      console.log("Updating event data:", eventData);
+      console.log("Event ID:", id);
+      console.log("User ID:", user?.id);
 
-      // Create the event
+      // Update the event
       try {
-        const response = await eventService.createEvent(eventData);
-        console.log("Event created successfully:", response);
+        const response = await eventService.updateEvent(id, eventData);
+        console.log("Event updated successfully:", response);
+
+        // Check if the response contains the updated event data
+        if (response && (response.data || response.event)) {
+          const updatedEvent = response.data || response.event;
+          console.log("Updated event details:", updatedEvent);
+        }
+
+        // Log navigation intent
+        console.log("Navigating to Dashboard with explore tab active");
 
         // Navigate to the Dashboard with the explore tab active and indicate source
-        navigate(`/dashboard?tab=explore&from=create`);
+        navigate("/dashboard?tab=explore&from=edit");
       } catch (apiError) {
-        console.error("API Error creating event:", apiError);
+        console.error("API Error updating event:", apiError);
+        console.error("Full error object:", JSON.stringify(apiError, null, 2));
+        console.error("Response data:", apiError.response?.data);
+        console.error("Response status:", apiError.response?.status);
+        console.error("Response headers:", apiError.response?.headers);
+
         const errorMsg =
           apiError.response?.data?.message ||
           apiError.response?.data?.error ||
           apiError.message ||
-          "Failed to create event. Please try again.";
+          "Failed to update event. Please try again.";
 
         setError(errorMsg);
 
@@ -144,11 +232,11 @@ export default function CreateEventPage() {
         ) {
           // Auth related error - redirect to login
           alert("Your session has expired. Please log in again.");
-          navigate("/login?redirect=/events/create");
+          navigate(`/login?redirect=/events/${id}/edit`);
         }
       }
     } catch (error) {
-      console.error("Error creating event:", error);
+      console.error("Error updating event:", error);
       setError(
         "An unexpected error occurred. Please try again or contact support."
       );
@@ -157,14 +245,45 @@ export default function CreateEventPage() {
     }
   };
 
+  // Show loading spinner while fetching event data
+  if (initialLoading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <LoadingSpinner size="large" />
+      </div>
+    );
+  }
+
+  // Show unauthorized message if user is not the creator
+  if (unauthorized) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="bg-red-50 p-4 rounded-md">
+          <h2 className="text-lg font-medium text-red-800 mb-2">
+            Unauthorized
+          </h2>
+          <p className="text-red-700">
+            You are not authorized to edit this event.
+          </p>
+          <Link
+            to={`/events/${id}`}
+            className="mt-4 inline-block text-green-600 hover:underline"
+          >
+            Back to Event
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">
-          Create a Volunteer Opportunity
+          Edit Volunteer Opportunity
         </h1>
         <p className="mt-2 text-gray-600">
-          Share your event or request for help with the community
+          Update your event or community help post
         </p>
       </div>
 
@@ -283,13 +402,13 @@ export default function CreateEventPage() {
             value={formData.location}
             onChange={handleChange}
             className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-            placeholder="Address or 'Virtual'"
+            placeholder="e.g., City Park, 123 Main St, or Virtual"
           />
         </div>
 
-        {/* Date and Time (only for non-ongoing events) */}
+        {/* Date and Time - Only show if not an ongoing opportunity */}
         {!formData.isOngoing && (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label
                 htmlFor="startDate"
@@ -297,27 +416,32 @@ export default function CreateEventPage() {
               >
                 Start Date *
               </label>
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="date"
-                  id="startDate"
-                  name="startDate"
-                  value={formData.startDate}
-                  onChange={handleChange}
-                  required={!formData.isOngoing}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                />
-                <input
-                  type="time"
-                  id="startTime"
-                  name="startTime"
-                  value={formData.startTime}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                />
-              </div>
+              <input
+                type="date"
+                id="startDate"
+                name="startDate"
+                value={formData.startDate}
+                onChange={handleChange}
+                required={!formData.isOngoing}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+              />
             </div>
-
+            <div>
+              <label
+                htmlFor="startTime"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Start Time
+              </label>
+              <input
+                type="time"
+                id="startTime"
+                name="startTime"
+                value={formData.startTime}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+              />
+            </div>
             <div>
               <label
                 htmlFor="endDate"
@@ -325,29 +449,30 @@ export default function CreateEventPage() {
               >
                 End Date
               </label>
-              <div className="grid grid-cols-2 gap-4">
-                <input
-                  type="date"
-                  id="endDate"
-                  name="endDate"
-                  value={formData.endDate}
-                  onChange={handleChange}
-                  min={formData.startDate} // Ensure end date is after start date
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                />
-                <input
-                  type="time"
-                  id="endTime"
-                  name="endTime"
-                  value={formData.endTime}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                If your event spans multiple days, enter the end date. For
-                single-day events, leave this blank.
-              </p>
+              <input
+                type="date"
+                id="endDate"
+                name="endDate"
+                value={formData.endDate}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="endTime"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                End Time
+              </label>
+              <input
+                type="time"
+                id="endTime"
+                name="endTime"
+                value={formData.endTime}
+                onChange={handleChange}
+                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+              />
             </div>
           </div>
         )}
@@ -358,7 +483,7 @@ export default function CreateEventPage() {
             htmlFor="capacity"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Capacity
+            Capacity (optional)
           </label>
           <input
             type="number"
@@ -368,25 +493,25 @@ export default function CreateEventPage() {
             onChange={handleChange}
             min="1"
             className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-            placeholder="Maximum number of volunteers (optional)"
+            placeholder="Maximum number of volunteers needed"
           />
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-sm text-gray-500">
             Leave blank for unlimited capacity
           </p>
         </div>
 
-        {/* Form actions */}
-        <div className="pt-4 flex justify-end space-x-3 border-t border-gray-200">
+        {/* Submit Button */}
+        <div className="flex justify-between pt-4">
           <Link
-            to="/events"
-            className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            to={`/events/${id}`}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
             Cancel
           </Link>
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
@@ -410,31 +535,14 @@ export default function CreateEventPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
-                Creating...
+                Updating...
               </>
             ) : (
-              "Create Opportunity"
+              "Update Event"
             )}
           </button>
         </div>
       </form>
-
-      {/* Help text */}
-      <div className="mt-8 bg-blue-50 p-4 rounded-md">
-        <h3 className="text-sm font-medium text-blue-800">
-          Tips for creating effective volunteer opportunities:
-        </h3>
-        <ul className="mt-2 text-sm text-blue-700 list-disc pl-5 space-y-1">
-          <li>Be specific about what volunteers will be doing</li>
-          <li>Clearly state any requirements (age, skills, etc.)</li>
-          <li>
-            Include information about parking, what to bring, or what to wear
-          </li>
-          <li>
-            For ongoing help posts, mention the frequency and commitment level
-          </li>
-        </ul>
-      </div>
     </div>
   );
 }

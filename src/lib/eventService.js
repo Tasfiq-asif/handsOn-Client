@@ -37,10 +37,15 @@ const eventService = {
   // Update an event
   async updateEvent(id, updates) {
     try {
+      console.log(`Sending update request for event ${id} with data:`, JSON.stringify(updates));
+      console.log(`API endpoint: /api/events/${id}`);
+      
       const response = await api.put(`/api/events/${id}`, updates);
+      console.log(`Update response received:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`Error updating event ${id}:`, error);
+      console.error(`Error response:`, error.response?.data);
       throw error;
     }
   },
