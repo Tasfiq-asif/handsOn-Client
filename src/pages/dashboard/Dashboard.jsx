@@ -34,12 +34,6 @@ const Dashboard = () => {
   const [allEventsLoading, setAllEventsLoading] = useState(false);
   const [allEventsError, setAllEventsError] = useState(null);
   const { user } = useAuth();
-  const [selectedEventId, setSelectedEventId] = useState(null);
-  const [eventDetailLoading, setEventDetailLoading] = useState(false);
-  const [eventDetail, setEventDetail] = useState(null);
-  const [eventDetailError, setEventDetailError] = useState(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -52,8 +46,9 @@ const Dashboard = () => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get("tab");
     const fromAction = params.get("from");
+    const deleted = params.get("deleted");
 
-    console.log("URL parameters:", { tabParam, fromAction });
+    console.log("URL parameters:", { tabParam, fromAction, deleted });
     console.log("Current location:", location.search);
 
     if (
@@ -65,15 +60,15 @@ const Dashboard = () => {
       console.log("Setting active tab to:", tabParam);
       setActiveTab(tabParam);
 
-      // If coming from event edit/create and tab is explore, clear any selected event
+      // If coming from event edit/create and tab is explore, refresh events list
       if (tabParam === "explore") {
-        console.log("Explore tab active, clearing selected event");
-        setSelectedEventId(null);
-        setEventDetail(null);
-
         // Refresh events list when coming from edit or create
-        if (fromAction === "edit" || fromAction === "create") {
-          console.log("Refreshing events list after edit/create");
+        if (
+          fromAction === "edit" ||
+          fromAction === "create" ||
+          deleted === "true"
+        ) {
+          console.log("Refreshing events list after edit/create/delete");
           fetchAllEvents(filters);
         }
 
@@ -90,17 +85,29 @@ const Dashboard = () => {
           setSuccessMessage("Event updated successfully!");
           // Clear the message after 5 seconds
           setTimeout(() => setSuccessMessage(null), 5000);
+        } else if (deleted === "true") {
+          console.log("Setting success message for delete action");
+          setSuccessMessage("Event deleted successfully!");
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+
+          // Remove the deleted parameter from the URL to prevent showing the message again on refresh
+          const newParams = new URLSearchParams(location.search);
+          newParams.delete("deleted");
+          navigate(
+            {
+              pathname: location.pathname,
+              search: newParams.toString(),
+            },
+            { replace: true }
+          );
         }
       }
     }
-  }, [location, filters]);
+  }, [location, filters, navigate]);
 
   useEffect(() => {
     if (activeTab === "explore") {
-      // Reset event selection when switching to explore tab
-      setSelectedEventId(null);
-      setEventDetail(null);
-
       // Fetch all events with current filters
       fetchAllEvents(filters);
     }
@@ -271,95 +278,9 @@ const Dashboard = () => {
     }
   };
 
-  const fetchEventDetails = async (eventId) => {
-    try {
-      setEventDetailLoading(true);
-      const { event: eventData } = await eventService.getEvent(eventId);
-
-      if (!eventData) {
-        throw new Error("Event not found");
-      }
-
-      console.log("Event detail data:", eventData);
-      // Log the creator_id and user.id for debugging
-      console.log("Event creator_id:", eventData.creator_id);
-      console.log("Current user.id:", user?.id);
-      console.log("Is creator check:", user?.id === eventData.creator_id);
-
-      setEventDetail(eventData);
-      setEventDetailError(null);
-    } catch (error) {
-      console.error("Error fetching event details:", error);
-      setEventDetailError(error.message || "Failed to load event details");
-    } finally {
-      setEventDetailLoading(false);
-    }
-  };
-
   const handleEventSelect = (eventId) => {
-    setSelectedEventId(eventId);
-    fetchEventDetails(eventId);
-    // No need to change the active tab, as we'll show event details in the current tab
-  };
-
-  const handleBackToEvents = () => {
-    setSelectedEventId(null);
-    setEventDetail(null);
-  };
-
-  const handleEventDetailRegistrationChange = async (eventId, isRegistered) => {
-    try {
-      if (isRegistered) {
-        await eventService.registerForEvent(eventId);
-      } else {
-        await eventService.cancelRegistration(eventId);
-      }
-
-      // Refresh event details
-      fetchEventDetails(eventId);
-
-      // Also update the events lists
-      handleRegistrationChange(eventId, isRegistered);
-    } catch (error) {
-      console.error("Registration change error:", error);
-    }
-  };
-
-  // Add handleDeleteEvent function
-  const handleDeleteEvent = async (eventId) => {
-    try {
-      setDeleteLoading(true);
-      await eventService.deleteEvent(eventId);
-
-      // Remove the event from all state variables
-      setAllEvents(allEvents.filter((event) => event.id !== eventId));
-      setUpcomingEvents(upcomingEvents.filter((event) => event.id !== eventId));
-      setPastEvents(pastEvents.filter((event) => event.id !== eventId));
-
-      // Go back to the events list
-      setSelectedEventId(null);
-      setEventDetail(null);
-      setShowDeleteConfirm(false);
-
-      // Show success message
-      setSuccessMessage("Event deleted successfully!");
-      setTimeout(() => setSuccessMessage(null), 5000);
-
-      // Force a refresh of the events list to ensure deleted event doesn't reappear
-      fetchAllEvents(filters);
-    } catch (error) {
-      console.error("Error deleting event:", error);
-      setError("Failed to delete event. Please try again.");
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
-
-  // Update handleEditEvent function to use React Router
-  const handleEditEvent = (eventId) => {
-    // Navigate to the edit page using React Router
-    navigate(`/events/${eventId}/edit`);
+    // Navigate to the event detail page instead of showing details in the dashboard
+    navigate(`/events/${eventId}`);
   };
 
   if (loading) {
@@ -408,7 +329,6 @@ const Dashboard = () => {
           <button
             onClick={() => {
               setActiveTab("explore");
-              setSelectedEventId(null);
             }}
             className="text-sm text-green-600 hover:text-green-800"
           >
@@ -476,10 +396,6 @@ const Dashboard = () => {
   );
 
   const renderEvents = () => {
-    if (selectedEventId && eventDetail) {
-      return renderEventDetail();
-    }
-
     return (
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Filters Sidebar */}
@@ -549,365 +465,7 @@ const Dashboard = () => {
     );
   };
 
-  const renderEventDetail = () => {
-    if (eventDetailLoading) {
-      return (
-        <div className="flex justify-center items-center min-h-screen">
-          <LoadingSpinner />
-        </div>
-      );
-    }
-
-    if (eventDetailError) {
-      return (
-        <div className="max-w-3xl mx-auto px-4 py-8">
-          <div className="bg-red-50 p-4 rounded-md">
-            <h2 className="text-lg font-medium text-red-800 mb-2">Error</h2>
-            <p className="text-red-700">{eventDetailError}</p>
-            <button
-              onClick={handleBackToEvents}
-              className="mt-4 inline-block text-green-600 hover:underline"
-            >
-              Back to Events
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    if (!eventDetail) return null;
-
-    // Determine if this is an event or community help post
-    const isHelpPost = eventDetail.is_ongoing;
-    const isRegistered = eventDetail.participants?.some(
-      (p) => p.user_id === user?.id && p.status === "registered"
-    );
-
-    // Log creator info for debugging
-    console.log("Event creator ID:", eventDetail.creator_id);
-    console.log("Current user ID:", user?.id);
-    console.log("Is creator:", user?.id === eventDetail.creator_id);
-
-    return (
-      <div className="max-w-7xl mx-auto">
-        {/* Back button */}
-        <button
-          onClick={handleBackToEvents}
-          className="mb-4 flex items-center text-green-600 hover:text-green-800"
-        >
-          <svg
-            className="h-5 w-5 mr-1"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path d="M15 19l-7-7 7-7"></path>
-          </svg>
-          Back to Events
-        </button>
-
-        {/* Delete confirmation modal */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                Confirm Delete
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Are you sure you want to delete "{eventDetail.title}"? This
-                action cannot be undone.
-              </p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                  disabled={deleteLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleDeleteEvent(eventDetail.id)}
-                  className="px-4 py-2 border border-transparent rounded-md text-white bg-red-600 hover:bg-red-700"
-                  disabled={deleteLoading}
-                >
-                  {deleteLoading ? (
-                    <span className="flex items-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Deleting...
-                    </span>
-                  ) : (
-                    "Delete Event"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white shadow-md rounded-lg overflow-hidden">
-          {/* Event header */}
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex justify-between items-start">
-              <div>
-                {/* Event type badge */}
-                <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    isHelpPost
-                      ? "bg-purple-100 text-purple-800"
-                      : "bg-green-100 text-green-800"
-                  }`}
-                >
-                  {isHelpPost ? "Community Help" : "Event"}
-                </span>
-
-                {/* Category badge if available */}
-                {eventDetail.category && (
-                  <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                    {eventDetail.category}
-                  </span>
-                )}
-
-                <h1 className="mt-2 text-3xl font-bold text-gray-900">
-                  {eventDetail.title}
-                </h1>
-
-                {/* Creator info */}
-                <p className="mt-1 text-sm text-gray-500">
-                  Created by{" "}
-                  {eventDetail.creator_name ||
-                    eventDetail.creator?.profiles?.full_name ||
-                    "Anonymous"}
-                </p>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex space-x-3">
-                {/* Show edit/delete buttons if user is the creator */}
-                {user && user.id === eventDetail.creator_id && (
-                  <>
-                    <button
-                      onClick={() => handleEditEvent(eventDetail.id)}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Event details */}
-          <div className="p-6">
-            <div className="lg:grid lg:grid-cols-3 lg:gap-8">
-              {/* Main content */}
-              <div className="lg:col-span-2">
-                <div className="prose max-w-none">
-                  <h2 className="text-xl font-semibold mb-4">
-                    About this opportunity
-                  </h2>
-                  <p className="whitespace-pre-line">
-                    {eventDetail.description}
-                  </p>
-                </div>
-
-                {/* Participants section */}
-                <div className="mt-8">
-                  <h2 className="text-xl font-semibold mb-4">Participants</h2>
-                  {eventDetail.participants &&
-                  eventDetail.participants.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {eventDetail.participants
-                        .filter((p) => p.status === "registered")
-                        .map((participant) => (
-                          <div
-                            key={participant.id}
-                            className="flex items-center space-x-2"
-                          >
-                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700">
-                              {participant.users?.profiles?.full_name?.charAt(
-                                0
-                              ) || "?"}
-                            </div>
-                            <span className="text-sm">
-                              {participant.users?.profiles?.full_name ||
-                                "Anonymous"}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500">
-                      No participants yet. Be the first to join!
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Sidebar */}
-              <div className="mt-8 lg:mt-0">
-                <div className="bg-gray-50 p-6 rounded-lg shadow-sm">
-                  {/* Date and time */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                      When
-                    </h3>
-                    <div className="mt-2 flex items-start">
-                      <svg
-                        className="h-5 w-5 text-gray-400 mr-2"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <div>
-                        {isHelpPost ? (
-                          <p className="text-gray-900">Ongoing opportunity</p>
-                        ) : (
-                          <>
-                            <p className="text-gray-900">
-                              {formatDate(eventDetail.start_date)}
-                            </p>
-                            {eventDetail.start_date && (
-                              <p className="text-gray-500">
-                                {formatTime(eventDetail.start_date)}
-                                {eventDetail.end_date &&
-                                  ` - ${formatTime(eventDetail.end_date)}`}
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Location */}
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                      Where
-                    </h3>
-                    <div className="mt-2 flex items-start">
-                      <svg
-                        className="h-5 w-5 text-gray-400 mr-2"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <p className="text-gray-900">
-                        {eventDetail.location || "Virtual"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Capacity if available */}
-                  {eventDetail.capacity && (
-                    <div className="mb-6">
-                      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
-                        Capacity
-                      </h3>
-                      <p className="mt-2 text-gray-900">
-                        {eventDetail.participants?.filter(
-                          (p) => p.status === "registered"
-                        ).length || 0}{" "}
-                        / {eventDetail.capacity} spots filled
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Registration button */}
-                  <div className="mt-8">
-                    {isRegistered ? (
-                      <button
-                        onClick={() =>
-                          handleEventDetailRegistrationChange(
-                            eventDetail.id,
-                            false
-                          )
-                        }
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                      >
-                        Cancel Registration
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() =>
-                          handleEventDetailRegistrationChange(
-                            eventDetail.id,
-                            true
-                          )
-                        }
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                      >
-                        Join Now
-                      </button>
-                    )}
-
-                    {!user && (
-                      <p className="mt-2 text-xs text-gray-500 text-center">
-                        You'll need to log in to register for this event.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const formatTime = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
   const renderExploreEvents = () => {
-    if (selectedEventId && eventDetail) {
-      return renderEventDetail();
-    }
-
     return (
       <div>
         <div className="flex justify-between items-center mb-6">
@@ -1094,8 +652,6 @@ const Dashboard = () => {
         return renderOverview();
     }
   };
-
-  console.log(eventDetail);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
