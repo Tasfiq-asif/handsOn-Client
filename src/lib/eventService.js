@@ -26,10 +26,14 @@ const eventService = {
   // Create a new event
   async createEvent(eventData) {
     try {
+      console.log('Creating event with data:', JSON.stringify(eventData));
       const response = await api.post('/api/events', eventData);
+      console.log('Event created successfully:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error creating event:', error);
+      console.error('Error response data:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       throw error;
     }
   },

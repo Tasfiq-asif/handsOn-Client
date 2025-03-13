@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
+import api from "../../lib/api";
 
 // Available options for skills and causes
 const SKILLS_OPTIONS = [
@@ -64,25 +65,16 @@ const ProfileForm = ({ user, profile, setProfile }) => {
       setLoading(true);
       setMessage({ text: "", type: "" });
 
-      // Update profile in Supabase
-      const { error } = await supabase.from("profiles").upsert(
-        {
-          user_id: user.id,
-          full_name: fullName,
-          username,
-          bio,
-          skills,
-          causes,
-          updated_at: new Date(),
-        },
-        { onConflict: "user_id" }
-      );
+      // Use the server API instead of direct Supabase access
+      await api.put("/api/users/profile", {
+        fullName,
+        username,
+        bio,
+        skills,
+        causes,
+      });
 
-      if (error) {
-        throw error;
-      }
-
-      // Also update user metadata
+      // Also update user metadata in Supabase Auth
       await supabase.auth.updateUser({
         data: {
           full_name: fullName,
@@ -107,7 +99,10 @@ const ProfileForm = ({ user, profile, setProfile }) => {
     } catch (error) {
       console.error("Error updating profile:", error.message);
       setMessage({
-        text: error.message || "Error updating profile",
+        text:
+          error.response?.data?.message ||
+          error.message ||
+          "Error updating profile",
         type: "error",
       });
     } finally {

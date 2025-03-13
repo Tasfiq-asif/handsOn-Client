@@ -71,6 +71,17 @@ export default function CreateEventPage() {
       return;
     }
 
+    // Validate required fields
+    if (!formData.title.trim()) {
+      setError("Please provide a title for the event");
+      return;
+    }
+
+    if (!formData.description.trim()) {
+      setError("Please provide a description for the event");
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -93,7 +104,7 @@ export default function CreateEventPage() {
         description: formData.description,
         location: formData.location,
         category: formData.category,
-        is_ongoing: formData.isOngoing,
+        isOngoing: formData.isOngoing,
         capacity: formData.capacity ? parseInt(formData.capacity, 10) : null,
       };
 
@@ -105,7 +116,7 @@ export default function CreateEventPage() {
             ? `${formData.startDate}T${formData.startTime}:00`
             : `${formData.startDate}T00:00:00`;
 
-          eventData.start_date = new Date(startDateTime).toISOString();
+          eventData.startDate = new Date(startDateTime).toISOString();
 
           // Add end date if provided
           if (formData.endDate) {
@@ -113,15 +124,26 @@ export default function CreateEventPage() {
               ? `${formData.endDate}T${formData.endTime}:00`
               : `${formData.endDate}T23:59:59`;
 
-            eventData.end_date = new Date(endDateTime).toISOString();
+            eventData.endDate = new Date(endDateTime).toISOString();
           }
+        } else {
+          setError("Please provide a start date for the event");
+          setLoading(false);
+          return;
         }
+      } else {
+        // For ongoing events, set startDate to current date
+        eventData.startDate = new Date().toISOString();
       }
 
       console.log("Submitting event data:", eventData);
 
       // Create the event
       try {
+        console.log(
+          "Sending request to create event with data:",
+          JSON.stringify(eventData)
+        );
         const response = await eventService.createEvent(eventData);
         console.log("Event created successfully:", response);
 
@@ -129,6 +151,7 @@ export default function CreateEventPage() {
         navigate(`/dashboard?tab=explore&from=create`);
       } catch (apiError) {
         console.error("API Error creating event:", apiError);
+        console.error("Error response data:", apiError.response?.data);
         const errorMsg =
           apiError.response?.data?.message ||
           apiError.response?.data?.error ||
