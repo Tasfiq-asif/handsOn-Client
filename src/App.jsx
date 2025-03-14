@@ -11,6 +11,11 @@ import EventsPage from "./pages/events/EventsPage";
 import EventDetailPage from "./pages/events/EventDetailPage";
 import CreateEventPage from "./pages/events/CreateEventPage";
 import EditEventPage from "./pages/events/EditEventPage";
+// Import Help Request pages
+import HelpRequestsPage from "./pages/helpRequests/HelpRequestsPage";
+import HelpRequestDetailPage from "./pages/helpRequests/HelpRequestDetailPage";
+import CreateHelpRequestPage from "./pages/helpRequests/CreateHelpRequestPage";
+import EditHelpRequestPage from "./pages/helpRequests/EditHelpRequestPage";
 import "./App.css";
 
 function App() {
@@ -58,6 +63,29 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Help Request Routes */}
+              <Route path="/help-requests" element={<HelpRequestsPage />} />
+              <Route
+                path="/help-requests/:id"
+                element={<HelpRequestDetailPage />}
+              />
+              <Route
+                path="/help-requests/create"
+                element={
+                  <ProtectedRoute>
+                    <CreateHelpRequestPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/help-requests/:id/edit"
+                element={
+                  <ProtectedRoute>
+                    <EditHelpRequestPage />
+                  </ProtectedRoute>
+                }
+              />
               {/* Add more routes as you develop the application */}
             </Routes>
           </div>
@@ -90,10 +118,10 @@ function Home() {
           </div>
           <div className="ml-3 inline-flex">
             <a
-              href="/teams"
+              href="/help-requests"
               className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200"
             >
-              Join a Team
+              Community Help
             </a>
           </div>
         </div>

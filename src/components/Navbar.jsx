@@ -12,6 +12,20 @@ export default function Navbar() {
             <Link to="/" className="text-white font-bold">
               HandsOn
             </Link>
+            <div className="ml-10 flex items-baseline space-x-4">
+              <Link
+                to="/events"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Events
+              </Link>
+              <Link
+                to="/help-requests"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Help Requests
+              </Link>
+            </div>
           </div>
           <div className="flex items-center">
             {user ? (
