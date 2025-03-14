@@ -193,12 +193,6 @@ export default function EventDetailPage() {
   const isHelpPost = event.is_ongoing;
 
   // Add detailed logging to understand the data structure
-  console.log("Full event object:", event);
-  console.log("Current user object:", user);
-  console.log("Event creator_id:", event.creator_id);
-  console.log("User ID:", user?.id);
-  console.log("User user_id:", user?.user_id);
-  console.log("All user properties:", user ? Object.keys(user) : "No user");
 
   // In Supabase:
   // - The events table has creator_id which is a UUID referencing auth.users.id

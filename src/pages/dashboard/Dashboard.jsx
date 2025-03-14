@@ -131,10 +131,18 @@ const Dashboard = () => {
 
   const getProfile = async () => {
     try {
+      // Use user.user_id if available, otherwise fall back to user.id
+      const userId = user?.user_id || user?.id;
+
+      if (!userId) {
+        console.error("No valid user ID found for profile query");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .single();
 
       if (error && error.code !== "PGRST116") {

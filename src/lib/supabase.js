@@ -16,12 +16,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     storage: localStorage, // Explicitly use localStorage for session storage
     storageKey: 'handsOn-auth-token',
-    debug: true // Enable debug mode to see more detailed logs
+    debug: false // Disable debug mode to prevent detailed logs
   },
   global: {
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
+      'Accept': 'application/json',
+      'apikey': supabaseAnonKey,
+      'X-Client-Info': 'supabase-js/2.x'
     },
   },
   realtime: {
@@ -31,15 +33,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Log the current session on initialization to help with debugging
-supabase.auth.getSession().then(({ data, error }) => {
+// Check for session errors on initialization
+supabase.auth.getSession().then(({ error }) => {
   if (error) {
     console.error('Error checking initial session:', error);
-  } else if (data.session) {
-    console.log('Supabase initialized with existing session for user:', data.session.user.email);
-    console.log('Session expires at:', new Date(data.session.expires_at * 1000).toLocaleString());
-  } else {
-    console.log('Supabase initialized with no active session');
   }
 });
 

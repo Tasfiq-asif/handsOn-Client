@@ -34,15 +34,8 @@ api.interceptors.request.use(
           // If session exists, add token to Authorization header
           if (session?.access_token) {
             config.headers.Authorization = `Bearer ${session.access_token}`;
-            console.log('Including token in request to:', config.url);
-          } else {
-            console.log('No active session found for request to:', config.url);
           }
         }
-      } else if (config.headers.Authorization) {
-        console.log('Using provided Authorization header for:', config.url);
-      } else {
-        console.log('Skipping auth token for auth endpoint:', config.url);
       }
       
       // Ensure Accept header is set to application/json to avoid 406 errors
@@ -51,7 +44,6 @@ api.interceptors.request.use(
       console.error('Error in request interceptor:', err);
     }
     
-    console.log(`API Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
     return config;
   },
   (error) => {
@@ -63,7 +55,6 @@ api.interceptors.request.use(
 // Add a response interceptor to log all responses and handle auth errors
 api.interceptors.response.use(
   (response) => {
-    console.log(`API Response: ${response.status} for ${response.config.method.toUpperCase()} ${response.config.url}`);
     return response;
   },
   async (error) => {
@@ -92,8 +83,6 @@ api.interceptors.response.use(
               window.location.href = '/login?session_expired=true';
             }
           } else {
-            console.log('Session refreshed, retrying request');
-            
             // Retry the original request with the new token
             const originalRequest = error.config;
             originalRequest.headers.Authorization = `Bearer ${data.session.access_token}`;

@@ -32,6 +32,9 @@ export default function EditEventPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState(null);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [eventData, setEventData] = useState(null);
+  const [authCheckComplete, setAuthCheckComplete] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Hooks
   const { user, refreshSession } = useAuth();
@@ -52,74 +55,155 @@ export default function EditEventPage() {
     "Human Rights",
   ];
 
-  // Load the event data when the component mounts
+  // Load the event data and check authorization in a single useEffect
   useEffect(() => {
-    const fetchEventData = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    const fetchEventAndCheckAuth = async () => {
       try {
         setInitialLoading(true);
+
+        // Fetch the event data
         const { event } = await eventService.getEvent(id);
 
         if (!event) {
           setError("Event not found");
+          setInitialLoading(false);
           return;
         }
 
-        // Log event and user data for debugging
-        console.log("Event data:", event);
+        // Store event data
+        setEventData(event);
+
+        // If we don't have user data yet, keep loading but don't set unauthorized
+        if (!user) {
+          console.log("Event loaded but waiting for user data");
+          // Don't set initialLoading to false yet - we're still waiting for user
+          return;
+        }
+
+        console.log("Performing authorization check with:");
         console.log("Current user:", user);
         console.log("Event creator ID:", event.creator_id);
-        console.log("User ID:", user?.id);
-        console.log("Is creator check:", user?.id === event.creator_id);
 
-        // Check if the current user is the creator
-        if (user?.id !== event.creator_id) {
+        // Use user.user_id if available, otherwise fall back to user.id
+        const userId = user?.user_id || user?.id;
+
+        console.log("User ID:", userId);
+        console.log("Is creator check:", userId === event.creator_id);
+
+        // Now do the authorization check
+        if (userId !== event.creator_id) {
           setUnauthorized(true);
-          return;
+        } else {
+          // Format dates and set form data
+          let startDate = "";
+          let startTime = "";
+          let endDate = "";
+          let endTime = "";
+
+          if (event.start_date) {
+            const startDateTime = new Date(event.start_date);
+            startDate = startDateTime.toISOString().split("T")[0];
+            startTime = startDateTime.toTimeString().slice(0, 5);
+          }
+
+          if (event.end_date) {
+            const endDateTime = new Date(event.end_date);
+            endDate = endDateTime.toISOString().split("T")[0];
+            endTime = endDateTime.toTimeString().slice(0, 5);
+          }
+
+          // Set form data
+          setFormData({
+            title: event.title || "",
+            description: event.description || "",
+            location: event.location || "",
+            category: event.category || "",
+            startDate,
+            startTime,
+            endDate,
+            endTime,
+            isOngoing: event.is_ongoing || false,
+            capacity: event.capacity ? String(event.capacity) : "",
+          });
         }
 
+        // Mark auth check as complete
+        setAuthCheckComplete(true);
+        setInitialLoading(false);
+      } catch (error) {
+        console.error("Error fetching event:", error);
+        setError("Failed to load event details. Please try again.");
+        setInitialLoading(false);
+      }
+    };
+
+    fetchEventAndCheckAuth();
+  }, [id, user, isSubmitting]);
+
+  // Add a separate effect to handle when user data arrives after event data
+  useEffect(() => {
+    // Skip authorization check if we're in the process of submitting the form
+    if (isSubmitting) {
+      return;
+    }
+
+    // If we have event data but were waiting for user to arrive, perform auth check now
+    if (user && eventData && !authCheckComplete) {
+      console.log(
+        "User data arrived after event data, performing auth check now"
+      );
+
+      // Use user.user_id if available, otherwise fall back to user.id
+      const userId = user?.user_id || user?.id;
+
+      console.log("User ID:", userId);
+      console.log("Event creator ID:", eventData.creator_id);
+      console.log("Is creator check:", userId === eventData.creator_id);
+
+      if (userId !== eventData.creator_id) {
+        setUnauthorized(true);
+      } else {
         // Format dates for the form
         let startDate = "";
         let startTime = "";
         let endDate = "";
         let endTime = "";
 
-        if (event.start_date) {
-          const startDateTime = new Date(event.start_date);
+        if (eventData.start_date) {
+          const startDateTime = new Date(eventData.start_date);
           startDate = startDateTime.toISOString().split("T")[0];
           startTime = startDateTime.toTimeString().slice(0, 5);
         }
 
-        if (event.end_date) {
-          const endDateTime = new Date(event.end_date);
+        if (eventData.end_date) {
+          const endDateTime = new Date(eventData.end_date);
           endDate = endDateTime.toISOString().split("T")[0];
           endTime = endDateTime.toTimeString().slice(0, 5);
         }
 
         // Set form data
         setFormData({
-          title: event.title || "",
-          description: event.description || "",
-          location: event.location || "",
-          category: event.category || "",
+          title: eventData.title || "",
+          description: eventData.description || "",
+          location: eventData.location || "",
+          category: eventData.category || "",
           startDate,
           startTime,
           endDate,
           endTime,
-          isOngoing: event.is_ongoing || false,
-          capacity: event.capacity ? String(event.capacity) : "",
+          isOngoing: eventData.is_ongoing || false,
+          capacity: eventData.capacity ? String(eventData.capacity) : "",
         });
-      } catch (error) {
-        console.error("Error fetching event:", error);
-        setError("Failed to load event details. Please try again.");
-      } finally {
-        setInitialLoading(false);
       }
-    };
 
-    if (user) {
-      fetchEventData();
+      setAuthCheckComplete(true);
+      setInitialLoading(false);
     }
-  }, [id, user]);
+  }, [user, eventData, authCheckComplete, isSubmitting]);
 
   /**
    * Handles form input changes
@@ -149,6 +233,7 @@ export default function EditEventPage() {
     try {
       setLoading(true);
       setError(null);
+      setIsSubmitting(true);
 
       // Refresh the session to ensure we have a valid token
       const { error: refreshError } = await refreshSession();
@@ -192,7 +277,7 @@ export default function EditEventPage() {
 
       console.log("Updating event data:", eventData);
       console.log("Event ID:", id);
-      console.log("User ID:", user?.id);
+      console.log("User ID:", user?.user_id);
 
       // Update the event
       try {
@@ -240,13 +325,14 @@ export default function EditEventPage() {
       setError(
         "An unexpected error occurred. Please try again or contact support."
       );
+      setIsSubmitting(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // Show loading spinner while fetching event data
-  if (initialLoading) {
+  // Only stop showing the loading spinner when all conditions are met
+  if (initialLoading || !authCheckComplete) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <LoadingSpinner size="large" />
