@@ -108,13 +108,23 @@ export default function EventDetailPage() {
    */
   const handleDelete = async () => {
     try {
+      console.log(`Attempting to delete event with ID: ${id}`);
+      console.log(`Current user:`, user);
+      console.log(`User ID from user.user_id:`, user?.user_id);
+      console.log(`User ID from user.id:`, user?.id);
+      console.log(`Combined user ID:`, user?.user_id || user?.id);
+      console.log(`Event creator_id:`, event.creator_id);
+
       setDeleteLoading(true);
-      await eventService.deleteEvent(id);
+      const response = await eventService.deleteEvent(id);
+      console.log(`Delete response:`, response);
 
       // Navigate to dashboard with success message
       navigate("/dashboard?tab=explore&deleted=true");
     } catch (error) {
       console.error("Delete error:", error);
+      console.error("Error response:", error.response?.data);
+      console.error("Error status:", error.response?.status);
       setError("Failed to delete this event. Please try again.");
       setShowDeleteConfirm(false);
     } finally {
@@ -126,6 +136,12 @@ export default function EventDetailPage() {
    * Handles event editing
    */
   const handleEdit = () => {
+    console.log(`Navigating to edit page for event ${id}`);
+    console.log(`Current user:`, user);
+    console.log(`User ID from user.user_id:`, user?.user_id);
+    console.log(`User ID from user.id:`, user?.id);
+    console.log(`Combined user ID:`, user?.user_id || user?.id);
+    console.log(`Event creator_id:`, event.creator_id);
     navigate(`/events/${id}/edit`);
   };
 
@@ -192,26 +208,32 @@ export default function EventDetailPage() {
   // Determine if this is an event or community help post
   const isHelpPost = event.is_ongoing;
 
-  // Add detailed logging to understand the data structure
-
   // In Supabase:
   // - The events table has creator_id which is a UUID referencing auth.users.id
   // - The user object from AuthContext might have user.user_id or user.id
-  // Try user.user_id first as requested
+  console.log("User object:", user);
+  console.log("Event object:", event);
+
+  // Get user ID and ensure it's a string
   const userId = user?.user_id || user?.id;
+  const userIdStr = String(userId || "");
+  const creatorIdStr = String(event.creator_id || "");
+
+  // Compare the string versions of the IDs
   const isCreator = Boolean(
-    userId && event.creator_id && userId === event.creator_id
+    userIdStr && creatorIdStr && userIdStr === creatorIdStr
   );
 
-  console.log("Using user ID for comparison:", userId);
+  console.log("Using user ID for comparison:", userIdStr);
+  console.log("Event creator ID for comparison:", creatorIdStr);
   console.log("Is creator check result:", isCreator);
   console.log(
     "Direct comparison:",
-    userId,
+    userIdStr,
     "===",
-    event.creator_id,
+    creatorIdStr,
     "=",
-    userId === event.creator_id
+    userIdStr === creatorIdStr
   );
 
   return (

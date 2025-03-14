@@ -57,10 +57,16 @@ const eventService = {
   // Delete an event
   async deleteEvent(id) {
     try {
+      console.log(`Sending delete request for event ${id}`);
+      console.log(`API endpoint: /api/events/${id}`);
+      
       const response = await api.delete(`/api/events/${id}`);
+      console.log(`Delete response received:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`Error deleting event ${id}:`, error);
+      console.error(`Error response:`, error.response?.data);
+      console.error(`Error status:`, error.response?.status);
       throw error;
     }
   },
