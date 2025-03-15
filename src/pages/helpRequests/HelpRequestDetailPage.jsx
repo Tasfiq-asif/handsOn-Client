@@ -57,11 +57,12 @@ export default function HelpRequestDetailPage() {
   }, [id]);
 
   // Check if the current user is the creator of the help request
-  const isCreator = user && helpRequest && user.id === helpRequest.creator_id;
+  const isCreator =
+    user && helpRequest && user.user_id === helpRequest.creator_id;
 
   // Check if the current user has already offered help
   const hasOfferedHelp =
-    user && helpers.some((helper) => helper.user_id === user.id);
+    user && helpers.some((helper) => helper.user_id === user.user_id);
 
   /**
    * Handle offering help
@@ -303,6 +304,7 @@ export default function HelpRequestDetailPage() {
     );
   }
 
+  console.log(user);
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {successMessage && (
