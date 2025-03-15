@@ -52,14 +52,25 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     try {
+      console.log("Starting Google login process");
+
+      // Get the current origin (works in both local and deployed environments)
+      const currentOrigin = window.location.origin;
+      console.log("Current origin:", currentOrigin);
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/dashboard`, // Redirect directly to dashboard
+          redirectTo: `${currentOrigin}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
 
       if (error) {
+        console.error("Google login error:", error);
         setError(error.message);
       }
     } catch (error) {

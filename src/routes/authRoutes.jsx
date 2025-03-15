@@ -6,6 +6,7 @@ import Login from "../pages/Login";
 import Signup from "../pages/Signup";
 import ResetPassword from "../pages/ResetPassword";
 import GoogleAuthCallback from "../pages/GoogleAuthCallback";
+import AuthCallback from "../pages/AuthCallback";
 import Dashboard from "../pages/dashboard/Dashboard";
 
 const AuthRoutes = [
@@ -20,6 +21,11 @@ const AuthRoutes = [
     key="google-callback"
     path="/auth/google/callback"
     element={<GoogleAuthCallback />}
+  />,
+  <Route
+    key="auth-callback"
+    path="/auth/callback"
+    element={<AuthCallback />}
   />,
   <Route
     key="dashboard"
