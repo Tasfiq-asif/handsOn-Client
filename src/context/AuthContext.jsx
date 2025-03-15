@@ -107,23 +107,18 @@ export function AuthProvider({ children }) {
     try {
       const { email, password, fullName } = data;
 
-      // Sign up with Supabase - explicitly setting email confirmation to false
+      // Simplest possible signup approach
       const { data: authData, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-          // No email verification required - users can log in immediately
-        },
       });
 
       if (error) {
+        console.error("Signup error:", error);
         throw error;
       }
 
-      console.log("User signed up successfully:", authData.user);
+      console.log("User signed up successfully:", authData);
 
       // Save user profile data to profiles table
       if (authData.user) {

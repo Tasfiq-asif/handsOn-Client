@@ -32,24 +32,18 @@ const Signup = () => {
       setError(null);
       setLoading(true);
 
-      // Sign up with Supabase - explicitly setting email confirmation to false
+      // Simplest possible signup approach
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-          emailRedirectTo: `${window.location.origin}/dashboard`,
-          // No email verification required - users can log in immediately
-        },
       });
 
       if (error) {
+        console.error("Signup error:", error);
         throw error;
       }
 
-      console.log("User signed up successfully:", data.user);
+      console.log("User signed up successfully:", data);
 
       // Save user profile data to profiles table
       if (data.user) {
@@ -81,6 +75,7 @@ const Signup = () => {
       // Redirect to dashboard directly (no email confirmation needed)
       navigate("/dashboard");
     } catch (error) {
+      console.error("Signup process error:", error);
       setError(error.message || "An error occurred during sign up");
     } finally {
       setLoading(false);
@@ -89,17 +84,29 @@ const Signup = () => {
 
   const handleGoogleSignUp = async () => {
     try {
+      console.log("Starting Google signup process");
+
+      // Get the current origin (works in both local and deployed environments)
+      const currentOrigin = window.location.origin;
+      console.log("Current origin:", currentOrigin);
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/google/callback`,
+          redirectTo: `${currentOrigin}/auth/callback`,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
 
       if (error) {
+        console.error("Google signup error:", error);
         setError(error.message);
       }
-    } catch {
+    } catch (error) {
+      console.error("Google signup error:", error);
       setError("Error connecting to Google. Please try again.");
     }
   };
