@@ -105,34 +105,57 @@ export function AuthProvider({ children }) {
   // Sign up
   const signUp = async (data) => {
     try {
-      // First sign up with Supabase directly
-      const { data: supabaseData, error: supabaseError } =
-        await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-          options: {
-            data: {
-              full_name: data.fullName,
-            },
+      const { email, password, fullName } = data;
+
+      // Sign up with Supabase - explicitly setting email confirmation to false
+      const { data: authData, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
           },
-        });
+          // No email verification required - users can log in immediately
+        },
+      });
 
-      if (supabaseError) {
-        console.error("Supabase signup error:", supabaseError);
-        return { data: null, error: supabaseError };
+      if (error) {
+        throw error;
       }
 
-      // Then register with our API
-      const response = await api.post("/api/users/register", data);
+      console.log("User signed up successfully:", authData.user);
 
-      // Set user from Supabase session
-      if (supabaseData.session) {
-        setUser(supabaseData.user);
+      // Save user profile data to profiles table
+      if (authData.user) {
+        const { error: profileError } = await supabase.from("profiles").insert([
+          {
+            user_id: authData.user.id,
+            full_name: fullName,
+            username: email.split("@")[0], // Default username based on email
+            created_at: new Date(),
+          },
+        ]);
+
+        if (profileError) {
+          console.error("Error saving profile:", profileError);
+        }
       }
 
-      return { data: response.data, error: null };
+      // Sign in the user immediately after signup
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        console.error("Error signing in after signup:", signInError);
+        throw signInError;
+      }
+
+      return { user: authData.user, error: null };
     } catch (error) {
-      return { data: null, error: error.response?.data || error.message };
+      console.error("Error in signUp:", error.message);
+      return { user: null, error };
     }
   };
 

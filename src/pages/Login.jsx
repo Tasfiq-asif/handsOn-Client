@@ -39,9 +39,11 @@ const Login = () => {
         throw error;
       }
 
+      console.log("User logged in successfully");
       // Redirect to dashboard after successful login
       navigate("/dashboard");
     } catch (error) {
+      console.error("Login error:", error);
       setError(error.message || "An error occurred during sign in");
     } finally {
       setLoading(false);
@@ -53,14 +55,15 @@ const Login = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/google/callback`,
+          redirectTo: `${window.location.origin}/dashboard`, // Redirect directly to dashboard
         },
       });
 
       if (error) {
         setError(error.message);
       }
-    } catch {
+    } catch (error) {
+      console.error("Google login error:", error);
       setError("Error connecting to Google. Please try again.");
     }
   };
@@ -76,7 +79,7 @@ const Login = () => {
       setLoading(true);
       setError(null);
 
-      // Correct method without any manual token
+      // Reset password without email confirmation
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
@@ -85,6 +88,7 @@ const Login = () => {
 
       setResetSent(true);
     } catch (error) {
+      console.error("Password reset error:", error);
       setError(error.message);
     } finally {
       setLoading(false);

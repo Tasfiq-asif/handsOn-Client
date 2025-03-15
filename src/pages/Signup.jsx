@@ -32,7 +32,7 @@ const Signup = () => {
       setError(null);
       setLoading(true);
 
-      // Sign up with Supabase
+      // Sign up with Supabase - explicitly setting email confirmation to false
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -40,12 +40,16 @@ const Signup = () => {
           data: {
             full_name: fullName,
           },
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+          // No email verification required - users can log in immediately
         },
       });
 
       if (error) {
         throw error;
       }
+
+      console.log("User signed up successfully:", data.user);
 
       // Save user profile data to profiles table
       if (data.user) {
@@ -61,6 +65,17 @@ const Signup = () => {
         if (profileError) {
           console.error("Error saving profile:", profileError);
         }
+      }
+
+      // Sign in the user immediately after signup
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        console.error("Error signing in after signup:", signInError);
+        throw signInError;
       }
 
       // Redirect to dashboard directly (no email confirmation needed)
