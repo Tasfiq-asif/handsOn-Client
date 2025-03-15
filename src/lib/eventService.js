@@ -85,11 +85,30 @@ const eventService = {
   // Cancel event registration
   async cancelRegistration(id) {
     try {
+      console.log(`Sending cancellation request for event ${id}`);
+      console.log(`API endpoint: /api/events/${id}/cancel`);
+      
       const response = await api.post(`/api/events/${id}/cancel`);
+      console.log(`Cancellation response received:`, response.data);
       return response.data;
     } catch (error) {
       console.error(`Error canceling registration for event ${id}:`, error);
+      console.error(`Error response:`, error.response?.data);
+      console.error(`Error status:`, error.response?.status);
       throw error;
+    }
+  },
+
+  // Check if user is registered for an event
+  async checkRegistrationStatus(eventId) {
+    try {
+      console.log(`Checking registration status for event ${eventId}`);
+      const response = await api.get(`/api/events/${eventId}/registration-status`);
+      console.log(`Registration status response:`, response.data);
+      return response.data.registered;
+    } catch (error) {
+      console.error(`Error checking registration status for event ${eventId}:`, error);
+      return false;
     }
   },
 

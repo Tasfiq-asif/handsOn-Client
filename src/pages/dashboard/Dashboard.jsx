@@ -159,6 +159,10 @@ const Dashboard = () => {
   const getRegisteredEvents = async () => {
     try {
       const now = new Date();
+      console.log(
+        "[Dashboard] Current date for comparison:",
+        now.toISOString()
+      );
 
       try {
         const response = await eventService.getUserEvents();
@@ -169,20 +173,43 @@ const Dashboard = () => {
 
           response.events.forEach((reg) => {
             const event = reg.event;
-            const eventDate = new Date(event.start_date);
+            // Make sure we have a valid date to compare
+            if (event.start_date) {
+              const eventDate = new Date(event.start_date);
+              console.log(
+                `[Dashboard] Event ${event.id} (${
+                  event.title
+                }) date: ${eventDate.toISOString()}, comparing with now: ${now.toISOString()}`
+              );
 
-            if (eventDate > now) {
-              upcoming.push(event);
+              if (eventDate > now) {
+                console.log(
+                  `[Dashboard] Event ${event.id} categorized as UPCOMING`
+                );
+                upcoming.push(event);
+              } else {
+                console.log(
+                  `[Dashboard] Event ${event.id} categorized as PAST`
+                );
+                past.push(event);
+              }
             } else {
-              past.push(event);
+              // If no start date (ongoing events), consider as upcoming
+              console.log(
+                `[Dashboard] Event ${event.id} has no start date, categorized as UPCOMING`
+              );
+              upcoming.push(event);
             }
           });
 
+          console.log(
+            `[Dashboard] Total upcoming events: ${upcoming.length}, past events: ${past.length}`
+          );
           setUpcomingEvents(upcoming);
           setPastEvents(past);
 
           // Update stats based on events
-          calculateStats(upcoming, past);
+          calculateStats(past);
         }
       } catch (error) {
         console.log("Events feature may not be fully implemented yet:", error);
@@ -202,6 +229,10 @@ const Dashboard = () => {
       const totalEvents = past.length;
       const hoursVolunteered = past.length * 2; // Placeholder: Assume 2 hours per event
       const pointsEarned = hoursVolunteered * 5; // 5 points per hour as per requirements
+
+      console.log(
+        `[Dashboard] Calculating stats: ${totalEvents} events, ${hoursVolunteered} hours, ${pointsEarned} points`
+      );
 
       setStats({
         hoursVolunteered,
@@ -226,30 +257,91 @@ const Dashboard = () => {
   };
 
   const handleRegistrationChange = (eventId, isRegistered) => {
+    console.log(
+      `[Dashboard] Registration change for event ${eventId}: ${
+        isRegistered ? "registered" : "canceled"
+      }`
+    );
+
     // Update UI when registration status changes
     if (isRegistered) {
-      // Move event from non-registered to upcoming
-      const event = [...upcomingEvents, ...pastEvents].find(
-        (e) => e.id === eventId
-      );
+      // Find the event in allEvents
+      const event = allEvents.find((e) => e.id === eventId);
       if (event) {
-        const eventDate = new Date(event.start_date);
         const now = new Date();
+        console.log(
+          `[Dashboard] Current date for comparison: ${now.toISOString()}`
+        );
 
-        if (eventDate > now) {
-          setUpcomingEvents((prev) => [...prev, event]);
+        // Make sure we have a valid date to compare
+        if (event.start_date) {
+          const eventDate = new Date(event.start_date);
+          console.log(
+            `[Dashboard] Event ${event.id} date: ${eventDate.toISOString()}`
+          );
+
+          // Add to appropriate list based on date
+          if (eventDate > now) {
+            // Check if it's not already in upcomingEvents
+            if (!upcomingEvents.some((e) => e.id === eventId)) {
+              console.log(
+                `[Dashboard] Adding event ${eventId} to upcoming events`
+              );
+              setUpcomingEvents((prev) => [...prev, event]);
+            }
+          } else {
+            // Check if it's not already in pastEvents
+            if (!pastEvents.some((e) => e.id === eventId)) {
+              console.log(`[Dashboard] Adding event ${eventId} to past events`);
+              setPastEvents((prev) => {
+                const newPastEvents = [...prev, event];
+                // Recalculate stats with the updated past events
+                setTimeout(() => calculateStats(newPastEvents), 0);
+                return newPastEvents;
+              });
+            }
+          }
         } else {
-          setPastEvents((prev) => [...prev, event]);
+          // If no start date (ongoing events), consider as upcoming
+          if (!upcomingEvents.some((e) => e.id === eventId)) {
+            console.log(
+              `[Dashboard] Adding ongoing event ${eventId} to upcoming events`
+            );
+            setUpcomingEvents((prev) => [...prev, event]);
+          }
         }
       }
     } else {
       // Remove from registered events
-      setUpcomingEvents((prev) => prev.filter((e) => e.id !== eventId));
-      setPastEvents((prev) => prev.filter((e) => e.id !== eventId));
-    }
+      console.log(
+        `[Dashboard] Removing event ${eventId} from upcoming and past events`
+      );
 
-    // Recalculate stats
-    calculateStats();
+      // Check if the event was in past events (affects stats)
+      const wasInPastEvents = pastEvents.some((e) => e.id === eventId);
+
+      setUpcomingEvents((prev) => {
+        const filtered = prev.filter((e) => e.id !== eventId);
+        console.log(
+          `[Dashboard] Upcoming events count: ${filtered.length} (after removal)`
+        );
+        return filtered;
+      });
+
+      setPastEvents((prev) => {
+        const filtered = prev.filter((e) => e.id !== eventId);
+        console.log(
+          `[Dashboard] Past events count: ${filtered.length} (after removal)`
+        );
+
+        // If the event was in past events, recalculate stats
+        if (wasInPastEvents) {
+          setTimeout(() => calculateStats(filtered), 0);
+        }
+
+        return filtered;
+      });
+    }
   };
 
   // Placeholder for future implementation
@@ -405,69 +497,83 @@ const Dashboard = () => {
 
   const renderEvents = () => {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Filters Sidebar */}
-        <div className="lg:col-span-1">
-          <EventFilter onFilterChange={handleFilterChange} filters={filters} />
+      <div className="space-y-6">
+        {/* Upcoming Events */}
+        <div>
+          <h3 className="text-xl font-medium text-gray-900 mb-4">
+            Your Upcoming Events
+          </h3>
+          {upcomingEvents.length === 0 ? (
+            <div className="bg-white p-6 rounded-lg shadow text-center">
+              <p className="text-gray-500 mb-4">You have no upcoming events</p>
+              <button
+                onClick={() => setActiveTab("explore")}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                Find Opportunities
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {upcomingEvents.map((event) => (
+                <div key={event.id}>
+                  <EventCard
+                    event={event}
+                    onRegistrationChange={(eventId, isRegistered) => {
+                      // If registration is canceled, immediately remove from UI
+                      if (!isRegistered) {
+                        console.log(
+                          `[Dashboard] User canceled registration for event ${eventId}`
+                        );
+                        // Let the handleRegistrationChange function handle the removal and stats update
+                        handleRegistrationChange(eventId, isRegistered);
+                      } else {
+                        handleRegistrationChange(eventId, isRegistered);
+                      }
+                    }}
+                    hideRegistrationButtons={false} // Show Cancel button in My Events tab
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Events Content */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Upcoming Events */}
-          <div>
-            <h3 className="text-xl font-medium text-gray-900 mb-4">
-              Your Upcoming Events
-            </h3>
-            {upcomingEvents.length === 0 ? (
-              <div className="bg-white p-6 rounded-lg shadow text-center">
-                <p className="text-gray-500 mb-4">
-                  You have no upcoming events
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {upcomingEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    onClick={() => handleEventSelect(event.id)}
-                    className="cursor-pointer"
-                  >
+        {/* Past Events */}
+        <div>
+          <h3 className="text-xl font-medium text-gray-900 mb-4">
+            Past Events
+          </h3>
+          {pastEvents.length === 0 ? (
+            <div className="bg-white p-6 rounded-lg shadow text-center">
+              <p className="text-gray-500">No past events found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pastEvents.map((event) => (
+                <div key={event.id} className="cursor-pointer">
+                  {/* Use a wrapper div to handle the click navigation */}
+                  <div onClick={() => navigate(`/events/${event.id}`)}>
                     <EventCard
                       event={event}
-                      onRegistrationChange={handleRegistrationChange}
+                      onRegistrationChange={(eventId, isRegistered) => {
+                        // If registration is canceled, immediately remove from UI and update stats
+                        if (!isRegistered) {
+                          console.log(
+                            `[Dashboard] User canceled registration for past event ${eventId}`
+                          );
+                          handleRegistrationChange(eventId, isRegistered);
+                        } else {
+                          handleRegistrationChange(eventId, isRegistered);
+                        }
+                      }}
+                      hideRegistrationButtons={false} // Allow cancellation of past events too
                     />
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Past Events */}
-          <div>
-            <h3 className="text-xl font-medium text-gray-900 mb-4">
-              Past Events
-            </h3>
-            {pastEvents.length === 0 ? (
-              <div className="bg-white p-6 rounded-lg shadow text-center">
-                <p className="text-gray-500">No past events found</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {pastEvents.map((event) => (
-                  <div
-                    key={event.id}
-                    onClick={() => handleEventSelect(event.id)}
-                    className="cursor-pointer"
-                  >
-                    <EventCard
-                      event={event}
-                      onRegistrationChange={handleRegistrationChange}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );

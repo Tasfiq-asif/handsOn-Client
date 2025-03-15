@@ -43,16 +43,23 @@ export default function EventDetailPage() {
       }
 
       console.log("Event data from API:", eventData);
-      console.log("Event creator_id from API:", eventData.creator_id);
 
+      // Log participant data to understand the structure
+      if (eventData.participants && eventData.participants.length > 0) {
+        console.log("Participants data:", eventData.participants.length);
+        console.log("First participant sample:", eventData.participants[0]);
+      } else {
+        console.log("No participants found for this event");
+      }
+
+      // Set event data
       setEvent(eventData);
 
-      // Check if user is already registered
+      // Check registration status directly from API
       if (user) {
-        const isUserRegistered = eventData.participants?.some(
-          (p) => p.user_id === user.id && p.status === "registered"
-        );
-        setRegistered(isUserRegistered);
+        const isRegistered = await eventService.checkRegistrationStatus(id);
+        console.log(`Registration status from API: ${isRegistered}`);
+        setRegistered(isRegistered);
       }
     } catch (error) {
       console.error("Error fetching event details:", error);
@@ -73,10 +80,12 @@ export default function EventDetailPage() {
 
     try {
       setIsRegistering(true);
-      await eventService.registerForEvent(id);
+      const response = await eventService.registerForEvent(id);
+      console.log("Registration response:", response);
+
+      // Update registration status and refresh event details
       setRegistered(true);
-      // Refresh event details to get updated participants list
-      fetchEventDetails();
+      await fetchEventDetails();
     } catch (error) {
       console.error("Registration error:", error);
       setError("Failed to register for this event. Please try again.");
@@ -91,10 +100,12 @@ export default function EventDetailPage() {
   const handleCancel = async () => {
     try {
       setIsRegistering(true);
-      await eventService.cancelRegistration(id);
+      const response = await eventService.cancelRegistration(id);
+      console.log("Cancellation response:", response);
+
+      // Update registration status and refresh event details
       setRegistered(false);
-      // Refresh event details to get updated participants list
-      fetchEventDetails();
+      await fetchEventDetails();
     } catch (error) {
       console.error("Cancel registration error:", error);
       setError("Failed to cancel registration. Please try again.");
@@ -108,13 +119,6 @@ export default function EventDetailPage() {
    */
   const handleDelete = async () => {
     try {
-      console.log(`Attempting to delete event with ID: ${id}`);
-      console.log(`Current user:`, user);
-      console.log(`User ID from user.user_id:`, user?.user_id);
-      console.log(`User ID from user.id:`, user?.id);
-      console.log(`Combined user ID:`, user?.user_id || user?.id);
-      console.log(`Event creator_id:`, event.creator_id);
-
       setDeleteLoading(true);
       const response = await eventService.deleteEvent(id);
       console.log(`Delete response:`, response);
@@ -123,8 +127,6 @@ export default function EventDetailPage() {
       navigate("/dashboard?tab=explore&deleted=true");
     } catch (error) {
       console.error("Delete error:", error);
-      console.error("Error response:", error.response?.data);
-      console.error("Error status:", error.response?.status);
       setError("Failed to delete this event. Please try again.");
       setShowDeleteConfirm(false);
     } finally {
@@ -136,12 +138,6 @@ export default function EventDetailPage() {
    * Handles event editing
    */
   const handleEdit = () => {
-    console.log(`Navigating to edit page for event ${id}`);
-    console.log(`Current user:`, user);
-    console.log(`User ID from user.user_id:`, user?.user_id);
-    console.log(`User ID from user.id:`, user?.id);
-    console.log(`Combined user ID:`, user?.user_id || user?.id);
-    console.log(`Event creator_id:`, event.creator_id);
     navigate(`/events/${id}/edit`);
   };
 
@@ -208,33 +204,8 @@ export default function EventDetailPage() {
   // Determine if this is an event or community help post
   const isHelpPost = event.is_ongoing;
 
-  // In Supabase:
-  // - The events table has creator_id which is a UUID referencing auth.users.id
-  // - The user object from AuthContext might have user.user_id or user.id
-  console.log("User object:", user);
-  console.log("Event object:", event);
-
-  // Get user ID and ensure it's a string
-  const userId = user?.user_id || user?.id;
-  const userIdStr = String(userId || "");
-  const creatorIdStr = String(event.creator_id || "");
-
-  // Compare the string versions of the IDs
-  const isCreator = Boolean(
-    userIdStr && creatorIdStr && userIdStr === creatorIdStr
-  );
-
-  console.log("Using user ID for comparison:", userIdStr);
-  console.log("Event creator ID for comparison:", creatorIdStr);
-  console.log("Is creator check result:", isCreator);
-  console.log(
-    "Direct comparison:",
-    userIdStr,
-    "===",
-    creatorIdStr,
-    "=",
-    userIdStr === creatorIdStr
-  );
+  // Check if user is the creator
+  const isCreator = user && user.id === event.creator_id;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -395,13 +366,10 @@ export default function EventDetailPage() {
                           className="flex items-center space-x-2"
                         >
                           <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700">
-                            {participant.users?.profiles?.full_name?.charAt(
-                              0
-                            ) || "?"}
+                            {participant.full_name?.charAt(0) || "?"}
                           </div>
                           <span className="text-sm">
-                            {participant.users?.profiles?.full_name ||
-                              "Anonymous"}
+                            {participant.full_name || "Anonymous"}
                           </span>
                         </div>
                       ))}
