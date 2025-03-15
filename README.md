@@ -1,30 +1,65 @@
 # HandsOn Volunteer Platform - Client
 
-## Project Overview
+## 1. Project Overview
 
-HandsOn is a community volunteer platform that connects volunteers with local events and community help opportunities. This is the client-side React application that provides the user interface for the platform.
+HandsOn is a community volunteer platform that connects volunteers with local events and help requests. This React application provides an intuitive interface for discovering, joining, and managing volunteer opportunities.
 
-## Technologies Used
+**Live Demo:** [https://hands-on-client.vercel.app](https://hands-on-client.vercel.app)  
+**API Server:** [https://hands-on-server.vercel.app](https://hands-on-server.vercel.app)
+
+## 2. Technologies Used
 
 - **React** - Frontend library
-- **Vite** - Build tool and development server
-- **Tailwind CSS** - Utility-first CSS framework
-- **React Router** - Client-side routing
-- **Supabase JS Client** - Database and authentication client
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **React Router** - Navigation
+- **Supabase** - Authentication
+- **Axios** - API requests
+- **Vercel** - Deployment
 
-## Features
+## 3. Features
 
-- **User Authentication** - Login, registration, and profile management
-- **Event Discovery** - Browse and search for volunteer opportunities
-- **Event Registration** - Join events and manage registrations
-- **Dashboard** - Track volunteer hours and impact
-- **Responsive Design** - Works on desktop and mobile devices
+- 🔐 **User Authentication** - Login, registration, and Google OAuth
+- 🔍 **Event Discovery** - Browse and search for volunteer opportunities
+- 📝 **Event Registration** - Join events and manage registrations
+- 📊 **Dashboard** - Track volunteer activity and impact
+- 📱 **Responsive Design** - Works on desktop and mobile devices
 
-## Setup Instructions
+## 4. Database Schema
+
+The client interacts with the server API, which connects to the following database schema:
+
+```
+users (Supabase Auth)
+  ├── id (UUID, PK)
+  ├── email
+  └── created_at
+
+profiles
+  ├── id (UUID, PK)
+  ├── user_id (UUID, FK)
+  ├── full_name
+  └── bio
+
+events
+  ├── id (UUID, PK)
+  ├── creator_id (UUID, FK)
+  ├── title
+  ├── description
+  └── start_date
+
+event_participants
+  ├── id (UUID, PK)
+  ├── event_id (UUID, FK)
+  ├── user_id (UUID, FK)
+  └── status
+```
+
+## 5. Setup Instructions
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
+- Node.js (v14+)
 - npm or yarn
 
 ### Installation
@@ -32,96 +67,59 @@ HandsOn is a community volunteer platform that connects volunteers with local ev
 1. Clone the repository
 2. Navigate to the client directory: `cd client/handsOn`
 3. Install dependencies: `npm install`
-4. Create a `.env` file with the following variables:
+4. Create a `.env` file with:
    ```
    VITE_SUPABASE_URL=your_supabase_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   VITE_API_URL=http://localhost:5000/api
+   VITE_API_URL=https://hands-on-server.vercel.app/api
    ```
 
-### Running the Application
+## 6. API Integration
 
-- Development mode: `npm run dev`
-- Build for production: `npm run build`
-- Preview production build: `npm run preview`
+The client communicates with the server through these main endpoints:
 
-## Project Structure
+### Authentication
 
-- `src/components` - Reusable UI components
-- `src/pages` - Page components
-- `src/context` - React context providers
-- `src/lib` - Utility functions and API clients
-- `src/assets` - Static assets like images and icons
+- Login: `POST /api/users/login`
+- Register: `POST /api/users/register`
+- Google Login: `POST /api/users/google-login`
+- Get Profile: `GET /api/users/profile`
 
-## Git Workflow
+### Events
 
-This project follows a feature branch workflow with pull requests for code review and integration.
+- Get Events: `GET /api/events`
+- Get Event Details: `GET /api/events/:id`
+- Create Event: `POST /api/events`
+- Register for Event: `POST /api/events/:id/register`
+- Cancel Registration: `POST /api/events/:id/cancel`
 
-### Current Branches
+## 7. Running the Project
 
-- `main` - Production-ready code
-- `develop` - Integration branch for features
-- `feature/event-listing` - Event listing functionality
-- `feature/help-request` - Help request functionality
-- `landing-page` - Landing page implementation
+### Development Mode
 
-### Merging Feature Branches via Pull Requests
+```bash
+npm run dev
+```
 
-1. **Ensure your feature branch is up to date with develop**:
+### Build for Production
 
-   ```bash
-   git checkout feature/your-branch
-   git pull origin develop
-   # Resolve any conflicts if they occur
-   ```
+```bash
+npm run build
+```
 
-2. **Push your changes to the remote repository**:
+### Preview Production Build
 
-   ```bash
-   git push origin feature/your-branch
-   ```
+```bash
+npm run preview
+```
 
-3. **Create a Pull Request (PR)**:
+### Deployment
 
-   - Go to your GitHub repository
-   - Click on "Pull requests" tab
-   - Click "New pull request"
-   - Set "base" branch to `develop`
-   - Set "compare" branch to your feature branch
-   - Click "Create pull request"
-   - Add a descriptive title and description
-   - Request reviewers if needed
+The client is deployed on Vercel. To deploy your own instance:
 
-4. **Code Review Process**:
+1. Fork the repository
+2. Connect to Vercel
+3. Configure environment variables
+4. Deploy
 
-   - Reviewers will examine your code and provide feedback
-   - Address any comments or requested changes
-   - Push additional commits to your feature branch as needed
-
-5. **Merge the Pull Request**:
-
-   - Once approved, click "Merge pull request"
-   - Choose the appropriate merge strategy:
-     - Merge commit: Preserves all commits history
-     - Squash and merge: Combines all commits into one
-     - Rebase and merge: Applies changes without a merge commit
-   - Click "Confirm merge"
-
-6. **Merge to Main**:
-
-   - After features are integrated and tested in `develop`
-   - Create a new PR from `develop` to `main`
-   - Follow the same review process
-   - Merge to deploy to production
-
-7. **Delete the Feature Branch (Optional)**:
-   - After successful merge, you can delete the feature branch
-   - This keeps the repository clean
-
-### Branch Protection Rules (Recommended)
-
-Consider setting up branch protection rules for the `main` and `develop` branches:
-
-- Require pull request reviews before merging
-- Require status checks to pass before merging
-- Restrict who can push to the branch
+For more information, visit the [project repository](https://github.com/yourusername/handsOn).
