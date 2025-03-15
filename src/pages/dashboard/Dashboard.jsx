@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../lib/supabase";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import ProfileForm from "./ProfileForm";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import EventCard from "../../components/events/EventCard";
@@ -9,10 +9,13 @@ import EventFilter from "../../components/events/EventFilter";
 import eventService from "../../lib/eventService";
 
 const Dashboard = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [pastEvents, setPastEvents] = useState([]);
   const [stats, setStats] = useState({
@@ -38,8 +41,74 @@ const Dashboard = () => {
     }
   }, [user]);
 
+  // Check for tab query parameter and success message
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get("tab");
+    const fromAction = params.get("from");
+    const deleted = params.get("deleted");
+
+    console.log("URL parameters:", { tabParam, fromAction, deleted });
+    console.log("Current location:", location.search);
+
+    if (
+      tabParam &&
+      ["overview", "profile", "events", "explore", "impact", "teams"].includes(
+        tabParam
+      )
+    ) {
+      console.log("Setting active tab to:", tabParam);
+      setActiveTab(tabParam);
+
+      // If coming from event edit/create and tab is explore, refresh events list
+      if (tabParam === "explore") {
+        // Refresh events list when coming from edit or create
+        if (
+          fromAction === "edit" ||
+          fromAction === "create" ||
+          deleted === "true"
+        ) {
+          console.log("Refreshing events list after edit/create/delete");
+          fetchAllEvents(filters);
+        }
+
+        // Set success message if coming from create or edit
+        if (fromAction === "create") {
+          console.log("Setting success message for create action");
+          setSuccessMessage(
+            "Event created successfully! It's now visible in the explore tab."
+          );
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else if (fromAction === "edit") {
+          console.log("Setting success message for edit action");
+          setSuccessMessage("Event updated successfully!");
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else if (deleted === "true") {
+          console.log("Setting success message for delete action");
+          setSuccessMessage("Event deleted successfully!");
+          // Clear the message after 5 seconds
+          setTimeout(() => setSuccessMessage(null), 5000);
+
+          // Remove the deleted parameter from the URL to prevent showing the message again on refresh
+          const newParams = new URLSearchParams(location.search);
+          newParams.delete("deleted");
+          navigate(
+            {
+              pathname: location.pathname,
+              search: newParams.toString(),
+            },
+            { replace: true }
+          );
+        }
+      }
+    }
+  }, [location, filters, navigate]);
+
   useEffect(() => {
     if (activeTab === "explore") {
+      // Fetch all events with current filters
       fetchAllEvents(filters);
     }
   }, [activeTab, filters]);
@@ -62,10 +131,18 @@ const Dashboard = () => {
 
   const getProfile = async () => {
     try {
+      // Use user.user_id if available, otherwise fall back to user.id
+      const userId = user?.user_id || user?.id;
+
+      if (!userId) {
+        console.error("No valid user ID found for profile query");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .single();
 
       if (error && error.code !== "PGRST116") {
@@ -82,6 +159,10 @@ const Dashboard = () => {
   const getRegisteredEvents = async () => {
     try {
       const now = new Date();
+      console.log(
+        "[Dashboard] Current date for comparison:",
+        now.toISOString()
+      );
 
       try {
         const response = await eventService.getUserEvents();
@@ -92,20 +173,43 @@ const Dashboard = () => {
 
           response.events.forEach((reg) => {
             const event = reg.event;
-            const eventDate = new Date(event.start_date);
+            // Make sure we have a valid date to compare
+            if (event.start_date) {
+              const eventDate = new Date(event.start_date);
+              console.log(
+                `[Dashboard] Event ${event.id} (${
+                  event.title
+                }) date: ${eventDate.toISOString()}, comparing with now: ${now.toISOString()}`
+              );
 
-            if (eventDate > now) {
-              upcoming.push(event);
+              if (eventDate > now) {
+                console.log(
+                  `[Dashboard] Event ${event.id} categorized as UPCOMING`
+                );
+                upcoming.push(event);
+              } else {
+                console.log(
+                  `[Dashboard] Event ${event.id} categorized as PAST`
+                );
+                past.push(event);
+              }
             } else {
-              past.push(event);
+              // If no start date (ongoing events), consider as upcoming
+              console.log(
+                `[Dashboard] Event ${event.id} has no start date, categorized as UPCOMING`
+              );
+              upcoming.push(event);
             }
           });
 
+          console.log(
+            `[Dashboard] Total upcoming events: ${upcoming.length}, past events: ${past.length}`
+          );
           setUpcomingEvents(upcoming);
           setPastEvents(past);
 
           // Update stats based on events
-          calculateStats(upcoming, past);
+          calculateStats(past);
         }
       } catch (error) {
         console.log("Events feature may not be fully implemented yet:", error);
@@ -125,6 +229,10 @@ const Dashboard = () => {
       const totalEvents = past.length;
       const hoursVolunteered = past.length * 2; // Placeholder: Assume 2 hours per event
       const pointsEarned = hoursVolunteered * 5; // 5 points per hour as per requirements
+
+      console.log(
+        `[Dashboard] Calculating stats: ${totalEvents} events, ${hoursVolunteered} hours, ${pointsEarned} points`
+      );
 
       setStats({
         hoursVolunteered,
@@ -149,30 +257,91 @@ const Dashboard = () => {
   };
 
   const handleRegistrationChange = (eventId, isRegistered) => {
+    console.log(
+      `[Dashboard] Registration change for event ${eventId}: ${
+        isRegistered ? "registered" : "canceled"
+      }`
+    );
+
     // Update UI when registration status changes
     if (isRegistered) {
-      // Move event from non-registered to upcoming
-      const event = [...upcomingEvents, ...pastEvents].find(
-        (e) => e.id === eventId
-      );
+      // Find the event in allEvents
+      const event = allEvents.find((e) => e.id === eventId);
       if (event) {
-        const eventDate = new Date(event.start_date);
         const now = new Date();
+        console.log(
+          `[Dashboard] Current date for comparison: ${now.toISOString()}`
+        );
 
-        if (eventDate > now) {
-          setUpcomingEvents((prev) => [...prev, event]);
+        // Make sure we have a valid date to compare
+        if (event.start_date) {
+          const eventDate = new Date(event.start_date);
+          console.log(
+            `[Dashboard] Event ${event.id} date: ${eventDate.toISOString()}`
+          );
+
+          // Add to appropriate list based on date
+          if (eventDate > now) {
+            // Check if it's not already in upcomingEvents
+            if (!upcomingEvents.some((e) => e.id === eventId)) {
+              console.log(
+                `[Dashboard] Adding event ${eventId} to upcoming events`
+              );
+              setUpcomingEvents((prev) => [...prev, event]);
+            }
+          } else {
+            // Check if it's not already in pastEvents
+            if (!pastEvents.some((e) => e.id === eventId)) {
+              console.log(`[Dashboard] Adding event ${eventId} to past events`);
+              setPastEvents((prev) => {
+                const newPastEvents = [...prev, event];
+                // Recalculate stats with the updated past events
+                setTimeout(() => calculateStats(newPastEvents), 0);
+                return newPastEvents;
+              });
+            }
+          }
         } else {
-          setPastEvents((prev) => [...prev, event]);
+          // If no start date (ongoing events), consider as upcoming
+          if (!upcomingEvents.some((e) => e.id === eventId)) {
+            console.log(
+              `[Dashboard] Adding ongoing event ${eventId} to upcoming events`
+            );
+            setUpcomingEvents((prev) => [...prev, event]);
+          }
         }
       }
     } else {
       // Remove from registered events
-      setUpcomingEvents((prev) => prev.filter((e) => e.id !== eventId));
-      setPastEvents((prev) => prev.filter((e) => e.id !== eventId));
-    }
+      console.log(
+        `[Dashboard] Removing event ${eventId} from upcoming and past events`
+      );
 
-    // Recalculate stats
-    calculateStats();
+      // Check if the event was in past events (affects stats)
+      const wasInPastEvents = pastEvents.some((e) => e.id === eventId);
+
+      setUpcomingEvents((prev) => {
+        const filtered = prev.filter((e) => e.id !== eventId);
+        console.log(
+          `[Dashboard] Upcoming events count: ${filtered.length} (after removal)`
+        );
+        return filtered;
+      });
+
+      setPastEvents((prev) => {
+        const filtered = prev.filter((e) => e.id !== eventId);
+        console.log(
+          `[Dashboard] Past events count: ${filtered.length} (after removal)`
+        );
+
+        // If the event was in past events, recalculate stats
+        if (wasInPastEvents) {
+          setTimeout(() => calculateStats(filtered), 0);
+        }
+
+        return filtered;
+      });
+    }
   };
 
   // Placeholder for future implementation
@@ -207,6 +376,11 @@ const Dashboard = () => {
     } finally {
       setAllEventsLoading(false);
     }
+  };
+
+  const handleEventSelect = (eventId) => {
+    // Navigate to the event detail page instead of showing details in the dashboard
+    navigate(`/events/${eventId}`);
   };
 
   if (loading) {
@@ -252,12 +426,14 @@ const Dashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium text-gray-900">Upcoming Events</h3>
-          <Link
-            to="/events"
+          <button
+            onClick={() => {
+              setActiveTab("explore");
+            }}
             className="text-sm text-green-600 hover:text-green-800"
           >
             View All
-          </Link>
+          </button>
         </div>
         {upcomingEvents.length === 0 ? (
           <p className="text-gray-500 text-sm">No upcoming events</p>
@@ -265,15 +441,18 @@ const Dashboard = () => {
           <ul className="space-y-3">
             {upcomingEvents.slice(0, 3).map((event) => (
               <li key={event.id} className="border-b pb-2">
-                <Link
-                  to={`/events/${event.id}`}
-                  className="hover:text-green-600"
+                <button
+                  onClick={() => {
+                    setActiveTab("events");
+                    handleEventSelect(event.id);
+                  }}
+                  className="hover:text-green-600 text-left w-full"
                 >
                   <p className="font-medium">{event.title}</p>
                   <p className="text-sm text-gray-500">
                     {formatDate(event.start_date)}
                   </p>
-                </Link>
+                </button>
               </li>
             ))}
           </ul>
@@ -292,12 +471,12 @@ const Dashboard = () => {
           >
             Create Event
           </Link>
-          <Link
-            to="/events"
+          <button
+            onClick={() => setActiveTab("explore")}
             className="block w-full text-center border border-green-600 text-green-600 hover:bg-green-50 font-medium py-2 px-4 rounded"
           >
             Find Volunteer Opportunities
-          </Link>
+          </button>
           {/* Teams feature - to be implemented later */}
           <button
             disabled
@@ -316,15 +495,9 @@ const Dashboard = () => {
     </div>
   );
 
-  const renderEvents = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {/* Filters Sidebar */}
-      <div className="lg:col-span-1">
-        <EventFilter onFilterChange={handleFilterChange} filters={filters} />
-      </div>
-
-      {/* Events Content */}
-      <div className="lg:col-span-3 space-y-6">
+  const renderEvents = () => {
+    return (
+      <div className="space-y-6">
         {/* Upcoming Events */}
         <div>
           <h3 className="text-xl font-medium text-gray-900 mb-4">
@@ -333,15 +506,34 @@ const Dashboard = () => {
           {upcomingEvents.length === 0 ? (
             <div className="bg-white p-6 rounded-lg shadow text-center">
               <p className="text-gray-500 mb-4">You have no upcoming events</p>
+              <button
+                onClick={() => setActiveTab("explore")}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                Find Opportunities
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {upcomingEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
+                <div key={event.id}>
+                  <EventCard
+                    event={event}
+                    onRegistrationChange={(eventId, isRegistered) => {
+                      // If registration is canceled, immediately remove from UI
+                      if (!isRegistered) {
+                        console.log(
+                          `[Dashboard] User canceled registration for event ${eventId}`
+                        );
+                        // Let the handleRegistrationChange function handle the removal and stats update
+                        handleRegistrationChange(eventId, isRegistered);
+                      } else {
+                        handleRegistrationChange(eventId, isRegistered);
+                      }
+                    }}
+                    hideRegistrationButtons={false} // Show Cancel button in My Events tab
+                  />
+                </div>
               ))}
             </div>
           )}
@@ -357,103 +549,128 @@ const Dashboard = () => {
               <p className="text-gray-500">No past events found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {pastEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
+                <div key={event.id} className="cursor-pointer">
+                  {/* Use a wrapper div to handle the click navigation */}
+                  <div onClick={() => navigate(`/events/${event.id}`)}>
+                    <EventCard
+                      event={event}
+                      onRegistrationChange={(eventId, isRegistered) => {
+                        // If registration is canceled, immediately remove from UI and update stats
+                        if (!isRegistered) {
+                          console.log(
+                            `[Dashboard] User canceled registration for past event ${eventId}`
+                          );
+                          handleRegistrationChange(eventId, isRegistered);
+                        } else {
+                          handleRegistrationChange(eventId, isRegistered);
+                        }
+                      }}
+                      hideRegistrationButtons={false} // Allow cancellation of past events too
+                    />
+                  </div>
+                </div>
               ))}
             </div>
           )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const renderExploreEvents = () => (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">
-            Volunteer Opportunities
-          </h2>
-          <p className="mt-1 text-gray-600">
-            Find events and community help requests to make a difference
-          </p>
-        </div>
+  const renderExploreEvents = () => {
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              Volunteer Opportunities
+            </h2>
+            <p className="mt-1 text-gray-600">
+              Find events and community help requests to make a difference
+            </p>
+          </div>
 
-        <Link
-          to="/events/create"
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          <svg
-            className="-ml-1 mr-2 h-5 w-5"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
+          <Link
+            to="/events/create"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
           >
-            <path
-              fillRule="evenodd"
-              d="M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V4a1 1 0 00-1-1z"
-              clipRule="evenodd"
+            <svg
+              className="-ml-1 mr-2 h-5 w-5"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 3a1 1 0 00-1 1v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V4a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Create Opportunity
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="col-span-1">
+            <EventFilter
+              onFilterChange={handleFilterChange}
+              filters={filters}
             />
-          </svg>
-          Create Opportunity
-        </Link>
-      </div>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="col-span-1">
-          <EventFilter onFilterChange={handleFilterChange} filters={filters} />
-        </div>
-
-        <div className="col-span-3">
-          {allEventsLoading ? (
-            <div className="flex justify-center py-12">
-              <LoadingSpinner />
-            </div>
-          ) : allEventsError ? (
-            <div className="bg-red-50 p-4 rounded-md">
-              <p className="text-red-700">{allEventsError}</p>
-              <button
-                onClick={() => fetchAllEvents(filters)}
-                className="mt-2 text-sm text-red-700 underline"
-              >
-                Try again
-              </button>
-            </div>
-          ) : allEvents.length === 0 ? (
-            <div className="bg-white p-8 rounded-lg shadow text-center">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No opportunities found
-              </h3>
-              <p className="text-gray-500">
-                Try adjusting your filters or create a new opportunity.
-              </p>
-              <Link
-                to="/events/create"
-                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
-              >
-                Create New Opportunity
-              </Link>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
-              {allEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onRegistrationChange={handleRegistrationChange}
-                />
-              ))}
-            </div>
-          )}
+          <div className="col-span-3">
+            {allEventsLoading ? (
+              <div className="flex justify-center py-12">
+                <LoadingSpinner />
+              </div>
+            ) : allEventsError ? (
+              <div className="bg-red-50 p-4 rounded-md">
+                <p className="text-red-700">{allEventsError}</p>
+                <button
+                  onClick={() => fetchAllEvents(filters)}
+                  className="mt-2 text-sm text-red-700 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : allEvents.length === 0 ? (
+              <div className="bg-white p-8 rounded-lg shadow text-center">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No opportunities found
+                </h3>
+                <p className="text-gray-500">
+                  Try adjusting your filters or create a new opportunity.
+                </p>
+                <Link
+                  to="/events/create"
+                  className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700"
+                >
+                  Create New Opportunity
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
+                {allEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    onClick={() => handleEventSelect(event.id)}
+                    className="cursor-pointer"
+                  >
+                    <EventCard
+                      event={event}
+                      onRegistrationChange={handleRegistrationChange}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderImpact = () => (
     <div className="bg-white p-6 rounded-lg shadow">
@@ -562,6 +779,30 @@ const Dashboard = () => {
 
         {error && (
           <div className="mb-6 bg-red-50 p-4 rounded text-red-700">{error}</div>
+        )}
+
+        {successMessage && (
+          <div className="mb-6 bg-green-50 p-4 rounded text-green-700 flex justify-between items-center">
+            <span>{successMessage}</span>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-green-500 hover:text-green-700"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         )}
 
         {/* Navigation Tabs */}

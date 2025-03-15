@@ -1,14 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import eventService from "../../lib/eventService";
 
-export default function EventCard({ event, onRegistrationChange = () => {} }) {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [registered, setRegistered] = useState(
-    event.participants?.some((p) => p.status === "registered")
-  );
+export default function EventCard({
+  event,
+  onRegistrationChange = () => {},
+  hideRegistrationButtons = false,
+}) {
   const { user } = useAuth();
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registered, setRegistered] = useState(false);
+
+  // Check registration status when component mounts or event changes
+  useEffect(() => {
+    const checkRegistration = async () => {
+      if (user && event) {
+        try {
+          const isRegistered = await eventService.checkRegistrationStatus(
+            event.id
+          );
+          console.log(
+            `[EventCard] Registration status for event ${event.id}: ${isRegistered}`
+          );
+          setRegistered(isRegistered);
+        } catch (error) {
+          console.error(
+            `[EventCard] Error checking registration status:`,
+            error
+          );
+        }
+      }
+    };
+
+    checkRegistration();
+  }, [user, event]);
 
   // Format date function
   const formatDate = (dateString) => {
@@ -30,11 +56,14 @@ export default function EventCard({ event, onRegistrationChange = () => {} }) {
 
     try {
       setIsRegistering(true);
-      await eventService.registerForEvent(event.id);
+      console.log(`[EventCard] Registering for event ${event.id}`);
+      const response = await eventService.registerForEvent(event.id);
+      console.log("[EventCard] Registration response:", response);
       setRegistered(true);
       onRegistrationChange(event.id, true);
     } catch (error) {
-      console.error("Registration error:", error);
+      console.error("[EventCard] Registration error:", error);
+      alert("Failed to register for this event. Please try again.");
     } finally {
       setIsRegistering(false);
     }
@@ -43,11 +72,14 @@ export default function EventCard({ event, onRegistrationChange = () => {} }) {
   const handleCancel = async () => {
     try {
       setIsRegistering(true);
-      await eventService.cancelRegistration(event.id);
+      console.log(`[EventCard] Canceling registration for event ${event.id}`);
+      const response = await eventService.cancelRegistration(event.id);
+      console.log("[EventCard] Cancellation response:", response);
       setRegistered(false);
       onRegistrationChange(event.id, false);
     } catch (error) {
-      console.error("Cancel registration error:", error);
+      console.error("[EventCard] Cancel registration error:", error);
+      alert("Failed to cancel registration. Please try again.");
     } finally {
       setIsRegistering(false);
     }
@@ -126,27 +158,31 @@ export default function EventCard({ event, onRegistrationChange = () => {} }) {
 
         <div className="flex justify-between items-center mt-4">
           <div className="text-xs text-gray-500">
-            {event.creator?.profiles?.full_name && (
-              <span>By {event.creator.profiles.full_name}</span>
-            )}
+            {event.creator_name && <span>By {event.creator_name}</span>}
           </div>
 
-          {registered ? (
-            <button
-              onClick={handleCancel}
-              disabled={isRegistering}
-              className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md bg-red-100 text-red-700 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-            >
-              {isRegistering ? "Processing..." : "Cancel Registration"}
-            </button>
+          {!hideRegistrationButtons ? (
+            registered ? (
+              <button
+                onClick={handleCancel}
+                disabled={isRegistering}
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md bg-red-100 text-red-700 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                {isRegistering ? "Processing..." : "Cancel Registration"}
+              </button>
+            ) : (
+              <button
+                onClick={handleRegister}
+                disabled={isRegistering}
+                className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+              >
+                {isRegistering ? "Processing..." : "Join Now"}
+              </button>
+            )
           ) : (
-            <button
-              onClick={handleRegister}
-              disabled={isRegistering}
-              className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-            >
-              {isRegistering ? "Processing..." : "Join Now"}
-            </button>
+            <span className="text-xs font-medium text-green-600">
+              {registered ? "Registered" : "View Details"}
+            </span>
           )}
         </div>
       </div>

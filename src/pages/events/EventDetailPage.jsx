@@ -17,6 +17,8 @@ export default function EventDetailPage() {
   const [error, setError] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [registered, setRegistered] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Hooks
   const { id } = useParams();
@@ -40,14 +42,24 @@ export default function EventDetailPage() {
         throw new Error("Event not found");
       }
 
+      console.log("Event data from API:", eventData);
+
+      // Log participant data to understand the structure
+      if (eventData.participants && eventData.participants.length > 0) {
+        console.log("Participants data:", eventData.participants.length);
+        console.log("First participant sample:", eventData.participants[0]);
+      } else {
+        console.log("No participants found for this event");
+      }
+
+      // Set event data
       setEvent(eventData);
 
-      // Check if user is already registered
+      // Check registration status directly from API
       if (user) {
-        const isUserRegistered = eventData.participants?.some(
-          (p) => p.user_id === user.id && p.status === "registered"
-        );
-        setRegistered(isUserRegistered);
+        const isRegistered = await eventService.checkRegistrationStatus(id);
+        console.log(`Registration status from API: ${isRegistered}`);
+        setRegistered(isRegistered);
       }
     } catch (error) {
       console.error("Error fetching event details:", error);
@@ -68,10 +80,12 @@ export default function EventDetailPage() {
 
     try {
       setIsRegistering(true);
-      await eventService.registerForEvent(id);
+      const response = await eventService.registerForEvent(id);
+      console.log("Registration response:", response);
+
+      // Update registration status and refresh event details
       setRegistered(true);
-      // Refresh event details to get updated participants list
-      fetchEventDetails();
+      await fetchEventDetails();
     } catch (error) {
       console.error("Registration error:", error);
       setError("Failed to register for this event. Please try again.");
@@ -86,16 +100,45 @@ export default function EventDetailPage() {
   const handleCancel = async () => {
     try {
       setIsRegistering(true);
-      await eventService.cancelRegistration(id);
+      const response = await eventService.cancelRegistration(id);
+      console.log("Cancellation response:", response);
+
+      // Update registration status and refresh event details
       setRegistered(false);
-      // Refresh event details to get updated participants list
-      fetchEventDetails();
+      await fetchEventDetails();
     } catch (error) {
       console.error("Cancel registration error:", error);
       setError("Failed to cancel registration. Please try again.");
     } finally {
       setIsRegistering(false);
     }
+  };
+
+  /**
+   * Handles event deletion
+   */
+  const handleDelete = async () => {
+    try {
+      setDeleteLoading(true);
+      const response = await eventService.deleteEvent(id);
+      console.log(`Delete response:`, response);
+
+      // Navigate to dashboard with success message
+      navigate("/dashboard?tab=explore&deleted=true");
+    } catch (error) {
+      console.error("Delete error:", error);
+      setError("Failed to delete this event. Please try again.");
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  /**
+   * Handles event editing
+   */
+  const handleEdit = () => {
+    navigate(`/events/${id}/edit`);
   };
 
   /**
@@ -161,6 +204,9 @@ export default function EventDetailPage() {
   // Determine if this is an event or community help post
   const isHelpPost = event.is_ongoing;
 
+  // Check if user is the creator
+  const isCreator = user && user.id === event.creator_id;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Breadcrumb navigation */}
@@ -181,6 +227,63 @@ export default function EventDetailPage() {
           <li className="text-gray-700 font-medium truncate">{event.title}</li>
         </ol>
       </nav>
+
+      {/* Delete confirmation modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Confirm Delete
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "{event.title}"? This action
+              cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                disabled={deleteLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 border border-transparent rounded-md text-white bg-red-600 hover:bg-red-700"
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Deleting...
+                  </span>
+                ) : (
+                  "Delete Event"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white shadow-md rounded-lg overflow-hidden">
         {/* Event header */}
@@ -211,22 +314,25 @@ export default function EventDetailPage() {
 
               {/* Creator info */}
               <p className="mt-1 text-sm text-gray-500">
-                Created by {event.creator?.profiles?.full_name || "Anonymous"}
+                Created by {event.creator_name || "Anonymous"}
               </p>
             </div>
 
             {/* Action buttons */}
             <div className="flex space-x-3">
               {/* Show edit/delete buttons if user is the creator */}
-              {user && user.id === event.creator_id && (
+              {isCreator && (
                 <>
-                  <Link
-                    to={`/events/${event.id}/edit`}
+                  <button
+                    onClick={handleEdit}
                     className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-gray-700 hover:bg-gray-50"
                   >
                     Edit
-                  </Link>
-                  <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50">
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md bg-white text-red-600 hover:bg-red-50"
+                  >
                     Delete
                   </button>
                 </>
@@ -260,13 +366,10 @@ export default function EventDetailPage() {
                           className="flex items-center space-x-2"
                         >
                           <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-700">
-                            {participant.users?.profiles?.full_name?.charAt(
-                              0
-                            ) || "?"}
+                            {participant.full_name?.charAt(0) || "?"}
                           </div>
                           <span className="text-sm">
-                            {participant.users?.profiles?.full_name ||
-                              "Anonymous"}
+                            {participant.full_name || "Anonymous"}
                           </span>
                         </div>
                       ))}

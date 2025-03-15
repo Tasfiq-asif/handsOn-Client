@@ -71,6 +71,17 @@ export default function CreateEventPage() {
       return;
     }
 
+    // Validate required fields
+    if (!formData.title.trim()) {
+      setError("Please provide a title for the event");
+      return;
+    }
+
+    if (!formData.description.trim()) {
+      setError("Please provide a description for the event");
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -115,20 +126,32 @@ export default function CreateEventPage() {
 
             eventData.endDate = new Date(endDateTime).toISOString();
           }
+        } else {
+          setError("Please provide a start date for the event");
+          setLoading(false);
+          return;
         }
+      } else {
+        // For ongoing events, set startDate to current date
+        eventData.startDate = new Date().toISOString();
       }
 
       console.log("Submitting event data:", eventData);
 
       // Create the event
       try {
+        console.log(
+          "Sending request to create event with data:",
+          JSON.stringify(eventData)
+        );
         const response = await eventService.createEvent(eventData);
         console.log("Event created successfully:", response);
 
-        // Navigate to the new event page
-        navigate(`/events/${response.event.id}`);
+        // Navigate to the Dashboard with the explore tab active and indicate source
+        navigate(`/dashboard?tab=explore&from=create`);
       } catch (apiError) {
         console.error("API Error creating event:", apiError);
+        console.error("Error response data:", apiError.response?.data);
         const errorMsg =
           apiError.response?.data?.message ||
           apiError.response?.data?.error ||
@@ -163,7 +186,7 @@ export default function CreateEventPage() {
         <h1 className="text-3xl font-bold text-gray-900">
           Create a Volunteer Opportunity
         </h1>
-        <p className="mt-2 text-gray-600">
+        <p className="mt-2 px-2 text-gray-600">
           Share your event or request for help with the community
         </p>
       </div>
@@ -208,7 +231,7 @@ export default function CreateEventPage() {
         <div>
           <label
             htmlFor="title"
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className="block text-sm font-medium text-gray-700 mb-1 px-2"
           >
             Title *
           </label>
@@ -219,7 +242,7 @@ export default function CreateEventPage() {
             value={formData.title}
             onChange={handleChange}
             required
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+            className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
             placeholder="e.g., Beach Cleanup Event or Need Tutors for After-School Program"
           />
         </div>
@@ -239,7 +262,7 @@ export default function CreateEventPage() {
             onChange={handleChange}
             required
             rows={5}
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+            className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
             placeholder="Provide details about the opportunity, what volunteers will do, and any requirements"
           />
         </div>
@@ -257,7 +280,7 @@ export default function CreateEventPage() {
             name="category"
             value={formData.category}
             onChange={handleChange}
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+            className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
           >
             <option value="">Select a category</option>
             {categories.map((category) => (
@@ -282,7 +305,7 @@ export default function CreateEventPage() {
             name="location"
             value={formData.location}
             onChange={handleChange}
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+            className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
             placeholder="Address or 'Virtual'"
           />
         </div>
@@ -305,7 +328,7 @@ export default function CreateEventPage() {
                   value={formData.startDate}
                   onChange={handleChange}
                   required={!formData.isOngoing}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                  className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
                 />
                 <input
                   type="time"
@@ -313,7 +336,7 @@ export default function CreateEventPage() {
                   name="startTime"
                   value={formData.startTime}
                   onChange={handleChange}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                  className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
                 />
               </div>
             </div>
@@ -325,7 +348,7 @@ export default function CreateEventPage() {
               >
                 End Date
               </label>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid  grid-cols-2 gap-4">
                 <input
                   type="date"
                   id="endDate"
@@ -333,7 +356,7 @@ export default function CreateEventPage() {
                   value={formData.endDate}
                   onChange={handleChange}
                   min={formData.startDate} // Ensure end date is after start date
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                  className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
                 />
                 <input
                   type="time"
@@ -341,10 +364,10 @@ export default function CreateEventPage() {
                   name="endTime"
                   value={formData.endTime}
                   onChange={handleChange}
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                  className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
                 />
               </div>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 px-2 text-xs text-gray-500">
                 If your event spans multiple days, enter the end date. For
                 single-day events, leave this blank.
               </p>
@@ -367,7 +390,7 @@ export default function CreateEventPage() {
             value={formData.capacity}
             onChange={handleChange}
             min="1"
-            className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
+            className="mt-1 px-2 block w-full border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
             placeholder="Maximum number of volunteers (optional)"
           />
           <p className="mt-1 text-xs text-gray-500">

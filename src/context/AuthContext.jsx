@@ -12,16 +12,90 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const initializeAuth = async () => {
+      try {
+        // First check for Supabase session
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error("Error getting Supabase session:", sessionError);
+        }
+
+        if (session) {
+          // Set basic user info from Supabase session
+          setUser(session.user);
+
+          // Try to get additional user data from our API
+          try {
+            // Make sure to include the token in this request
+            const response = await api.get("/api/users/profile", {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (response.data && response.data.user) {
+              // Merge Supabase user with profile data
+              setUser((prevUser) => ({
+                ...prevUser,
+                ...response.data.user,
+              }));
+            }
+          } catch (profileError) {
+            console.error("Error fetching user profile:", profileError);
+            // Even if profile fetch fails, we still have the basic user from Supabase
+          }
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
 
     // Listen for changes on auth state
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        if (session) {
+          setUser(session.user);
+
+          // Try to get additional user data
+          try {
+            const response = await api.get("/api/users/profile", {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (response.data && response.data.user) {
+              setUser((prevUser) => ({
+                ...prevUser,
+                ...response.data.user,
+              }));
+            }
+          } catch (error) {
+            console.error("Error fetching user profile after sign in:", error);
+          }
+        }
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
+      } else if (event === "INITIAL_SESSION") {
+        // This event fires when Supabase first loads and checks for an existing session
+        if (session && !user) {
+          setUser(session.user);
+        }
+      }
+
       setLoading(false);
     });
 
@@ -31,12 +105,30 @@ export function AuthProvider({ children }) {
   // Sign up
   const signUp = async (data) => {
     try {
-      // Ensure path is correct with /api prefix
+      // First sign up with Supabase directly
+      const { data: supabaseData, error: supabaseError } =
+        await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.fullName,
+            },
+          },
+        });
+
+      if (supabaseError) {
+        console.error("Supabase signup error:", supabaseError);
+        return { data: null, error: supabaseError };
+      }
+
+      // Then register with our API
       const response = await api.post("/api/users/register", data);
 
-      // Get updated session from Supabase
-      const { data: sessionData } = await supabase.auth.getSession();
-      setUser(sessionData.session?.user ?? null);
+      // Set user from Supabase session
+      if (supabaseData.session) {
+        setUser(supabaseData.user);
+      }
 
       return { data: response.data, error: null };
     } catch (error) {
@@ -47,25 +139,32 @@ export function AuthProvider({ children }) {
   // Sign in
   const signIn = async (data) => {
     try {
-      // Ensure path is correct with /api prefix
-      const response = await api.post("/api/users/login", data);
+      // First sign in with Supabase directly to get a session
+      const { data: supabaseData, error: supabaseError } =
+        await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
 
-      // Force a refresh of the Supabase session
-      await supabase.auth.refreshSession();
-
-      // Get updated session from Supabase
-      const { data: sessionData, error } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error("Session error:", error);
-        return { data: null, error: "Authentication failed" };
+      if (supabaseError) {
+        console.error("Supabase signin error:", supabaseError);
+        return { data: null, error: supabaseError };
       }
 
-      // Set user state with the data from our API response for immediate UI updates
-      setUser(sessionData.session?.user ?? response.data.user ?? null);
+      // Then login with our API to set the HTTP-only cookie
+      const response = await api.post("/api/users/login", data, {
+        headers: {
+          // Include the Supabase token in the API request
+          Authorization: `Bearer ${supabaseData.session.access_token}`,
+        },
+      });
+
+      // Set user from Supabase session
+      setUser(supabaseData.user);
 
       return { data: response.data, error: null };
     } catch (error) {
+      console.error("Login error:", error);
       return { data: null, error: error.response?.data || error.message };
     }
   };
@@ -73,9 +172,15 @@ export function AuthProvider({ children }) {
   // Sign out
   const signOut = async () => {
     try {
-      // Ensure path is correct with /api prefix
+      // First sign out from our API
       await api.post("/api/users/logout");
-      await supabase.auth.signOut();
+
+      // Then sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Supabase signout error:", error);
+      }
+
       setUser(null);
       return { error: null };
     } catch (error) {
@@ -87,7 +192,6 @@ export function AuthProvider({ children }) {
   // Refresh session
   const refreshSession = async () => {
     try {
-      console.log("Refreshing auth session...");
       const { data, error } = await supabase.auth.refreshSession();
 
       if (error) {
@@ -96,11 +200,9 @@ export function AuthProvider({ children }) {
       }
 
       if (data.session) {
-        console.log("Session refreshed successfully");
         setUser(data.session.user);
         return { data, error: null };
       } else {
-        console.log("No session after refresh");
         return { data: null, error: "No session" };
       }
     } catch (error) {

@@ -5,13 +5,27 @@ export default function Navbar() {
   const { user, signOut } = useAuth();
 
   return (
-    <nav className="bg-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="bg-gray-800 w-full">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
-            <Link to="/" className="text-white font-bold">
+            <Link to="/" className="text-white font-bold text-xl">
               HandsOn
             </Link>
+            <div className="ml-10 flex items-baseline space-x-4">
+              <Link
+                to="/events"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Events
+              </Link>
+              <Link
+                to="/help-requests"
+                className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Help Requests
+              </Link>
+            </div>
           </div>
           <div className="flex items-center">
             {user ? (
@@ -39,7 +53,7 @@ export default function Navbar() {
                 </Link>
                 <Link
                   to="/signup"
-                  className="text-gray-300 hover:text-white px-3 py-2"
+                  className="text-gray-300 hover:text-white px-3 py-2 ml-4 bg-green-600 hover:bg-green-700 rounded-md"
                 >
                   Sign Up
                 </Link>
